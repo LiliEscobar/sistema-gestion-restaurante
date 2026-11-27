@@ -43,7 +43,7 @@ function PerfilPage() {
                 </div>
             </header>
             {error && <div className="notice is-error" role="alert">No se pudo cargar tu perfil: {error}</div>}
-            {cargando ? <p className="loading-state">Cargando perfil…</p> : perfil && (
+            {cargando ? <p className="loading-state" role="status">Cargando perfil…</p> : perfil && (
                 <section className="surface-card">
                     <h2>Cuenta de usuario</h2>
                     <div className="form-grid">

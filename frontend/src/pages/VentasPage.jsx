@@ -1,4 +1,6 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import CatalogoMenu from '../../components/catalogo-menu.jsx';
+import FotoProducto from '../../components/foto-producto.jsx';
 import { ApiError, solicitudApi } from '../api.js';
 import { puedeElegirSucursal as rolEligeSucursal } from '../permisos.js';
 
@@ -45,6 +47,7 @@ function VentasPage({ permisos = [], usuario }) {
     const [procesando, setProcesando] = useState(false);
     const [error, setError] = useState('');
     const [confirmacion, setConfirmacion] = useState(null);
+    const cantidadRef = useRef(null);
 
     const [recargaVentas, setRecargaVentas] = useState(0);
 
@@ -183,6 +186,16 @@ function VentasPage({ permisos = [], usuario }) {
     }
 
     const faltaSucursal = eligeSucursal && !sucursalVenta;
+    const nombreSucursalVenta = sucursales.find((sucursal) => String(sucursal.id) === String(sucursalVenta))?.nombre
+        || (sucursalVenta ? 'tu sucursal' : '');
+
+    // Elegir en el catálogo solo prepara la línea: la cantidad y «Agregar» siguen siendo el formulario existente.
+    function elegirDelCatalogo(producto) {
+        setProductoId(String(producto.id));
+        setError('');
+        cantidadRef.current?.focus();
+        cantidadRef.current?.select();
+    }
 
     return (
         <>
@@ -214,32 +227,43 @@ function VentasPage({ permisos = [], usuario }) {
                 </div>
             )}
 
-            {puedeRegistrar && puedeVerMenu && (cargando ? <p className="loading-state">Cargando menú…</p> :
+            {puedeRegistrar && puedeVerMenu && (cargando ? <p className="loading-state" role="status">Cargando menú…</p> :
                 errorCarga ? <div className="notice is-error" role="alert">No se pudo preparar el registro de ventas: {errorCarga}</div> : (
                 <>
-                    <section className="surface-card">
+                    <section className="surface-card sales-selection">
                         <h2>Agregar productos</h2>
+                        <p className="form-help">Elige una sección, consulta la receta si lo necesitas y agrega el producto con su cantidad.</p>
                         {productos.length === 0 ? (
                             <p className="empty-state">No hay productos activos para vender.</p>
                         ) : (
-                            <form className="inline-form" onSubmit={agregarProducto}>
-                                <label className="form-field">
-                                    Producto
-                                    <select required value={productoId} onChange={(event) => setProductoId(event.target.value)}>
-                                        <option value="">Selecciona un producto</option>
-                                        {productos.map((producto) => (
-                                            <option key={producto.id} value={producto.id}>
-                                                {producto.nombre} · ${Number(producto.precioVenta).toFixed(2)}
-                                            </option>
-                                        ))}
-                                    </select>
-                                </label>
-                                <label className="form-field" style={{ maxWidth: 130 }}>
-                                    Cantidad
-                                    <input min="1" max="999" step="1" type="number" value={cantidad} onChange={(event) => setCantidad(event.target.value)} />
-                                </label>
-                                <button className="secondary-button" type="submit">Agregar</button>
-                            </form>
+                            <>
+                                <CatalogoMenu
+                                    productos={productos}
+                                    sucursalId={sucursalVenta}
+                                    nombreSucursal={nombreSucursalVenta}
+                                    seleccionadoId={Number(productoId) || null}
+                                    textoElegir="Elegir para la venta"
+                                    onElegir={elegirDelCatalogo}
+                                />
+                                <form className="inline-form" onSubmit={agregarProducto}>
+                                    <div className="form-field">
+                                        <label htmlFor="ventas-producto">Producto</label>
+                                        <select id="ventas-producto" required value={productoId} onChange={(event) => setProductoId(event.target.value)}>
+                                            <option value="">Selecciona un producto</option>
+                                            {productos.map((producto) => (
+                                                <option key={producto.id} value={producto.id}>
+                                                    {producto.nombre} · ${Number(producto.precioVenta).toFixed(2)}
+                                                </option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                    <label className="form-field sales-quantity">
+                                        Cantidad
+                                        <input ref={cantidadRef} min="1" max="999" step="1" type="number" value={cantidad} onChange={(event) => setCantidad(event.target.value)} />
+                                    </label>
+                                    <button className="secondary-button" type="submit">Agregar</button>
+                                </form>
+                            </>
                         )}
                     </section>
 
@@ -250,7 +274,13 @@ function VentasPage({ permisos = [], usuario }) {
                                 <ul className="cart-list">
                                     {carrito.map((item) => (
                                         <li className="cart-row" key={item.id}>
-                                            <span><strong>{item.nombre}</strong><br />${Number(item.precioVenta).toFixed(2)} por unidad</span>
+                                            <span className="cart-product">
+                                                <FotoProducto codigo={item.codigo} categoria={item.categoria?.nombre} />
+                                                <span>
+                                                    <strong>{item.nombre}</strong>
+                                                    <span className="sale-product-price">${Number(item.precioVenta).toFixed(2)} por unidad</span>
+                                                </span>
+                                            </span>
                                             <input
                                                 aria-label={`Cantidad de ${item.nombre}`}
                                                 min="1"
@@ -356,10 +386,10 @@ function VentasPage({ permisos = [], usuario }) {
                         <h2>Ventas recientes</h2>
                         <button className="secondary-button" type="button" onClick={cargarVentas} disabled={cargandoVentas}>Actualizar</button>
                     </div>
-                    {cargandoVentas ? <p className="loading-state">Cargando ventas…</p> :
+                    {cargandoVentas ? <p className="loading-state" role="status">Cargando ventas…</p> :
                         errorVentas ? <div className="notice is-error" role="alert">No se pudieron cargar las ventas: {errorVentas}</div> :
                         ventas.length === 0 ? <p className="empty-state">No hay ventas registradas.</p> : (
-                            <div className="data-table-wrap">
+                            <div className="data-table-wrap" tabIndex={0}>
                                 <table className="data-table">
                                     <thead><tr><th>Fecha</th><th>Venta</th><th>Documento</th><th>Sucursal</th><th>Atendió</th><th>Líneas</th><th>Total</th></tr></thead>
                                     <tbody>

@@ -192,7 +192,7 @@ function EmpleadosPage({ permisos = [], usuario }) {
             )}
 
             {empleadoEnEdicion && (
-                <form className="surface-card employee-registration" onSubmit={guardarEdicion} ref={formularioRef} aria-label={`Editar expediente de ${empleadoEnEdicion.nombreCompleto}`}>
+                <form className="surface-card employee-registration is-editing" onSubmit={guardarEdicion} ref={formularioRef} aria-label={`Editar expediente de ${empleadoEnEdicion.nombreCompleto}`}>
                     <div className="page-heading">
                         <div>
                             <h2>Editar expediente</h2>
@@ -218,10 +218,10 @@ function EmpleadosPage({ permisos = [], usuario }) {
                         <h2 tabIndex={-1}>{mostrarInactivos ? 'Todo el personal' : 'Personal activo'}</h2>
                         <label><input type="checkbox" checked={mostrarInactivos} onChange={(event) => { setMostrarInactivos(event.target.checked); cargarEmpleados(); }} /> Incluir dados de baja</label>
                     </div>
-                    {cargando ? <p className="loading-state">Cargando empleados…</p> :
+                    {cargando ? <p className="loading-state" role="status">Cargando empleados…</p> :
                         errorCarga ? <div className="notice is-error" role="alert">No se pudieron cargar los empleados: {errorCarga}</div> :
                         empleados.length === 0 ? <p className="empty-state">No hay empleados registrados.</p> : (
-                            <div className="data-table-wrap">
+                            <div className="data-table-wrap" tabIndex={0}>
                                 <table className="data-table">
                                     <thead>
                                         <tr><th>Empleado</th><th>Código</th><th>Cargo</th><th>Sucursal</th><th>Salario mensual</th><th>Ingreso</th><th>Estado</th>{puedeRegistrar && <th>Acciones</th>}</tr>

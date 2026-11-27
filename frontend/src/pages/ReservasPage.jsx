@@ -207,7 +207,7 @@ function ReservasPage({ permisos = [], usuario }) {
                 </label>
             )}
 
-            {cargando ? <p className="loading-state">Cargando reservas…</p> :
+            {cargando ? <p className="loading-state" role="status">Cargando reservas…</p> :
                 errorCarga ? <div className="notice is-error" role="alert">No se pudieron cargar las reservas: {errorCarga}</div> : (
                 <>
                     {puedeReservar && (
@@ -262,7 +262,7 @@ function ReservasPage({ permisos = [], usuario }) {
                         </div>
                         <h2>Reservas</h2>
                         {reservas.length === 0 ? <p className="empty-state">No hay reservas en el período.</p> : (
-                            <div className="data-table-wrap">
+                            <div className="data-table-wrap" tabIndex={0}>
                                 <table className="data-table">
                                     <thead><tr><th>Fecha</th><th>Mesa</th><th>Cliente</th><th>Personas</th>{eligeSucursal && <th>Sucursal</th>}<th>Estado</th>{puedeReservar && <th>Acciones</th>}</tr></thead>
                                     <tbody>{reservas.map((reserva) => (
@@ -296,7 +296,7 @@ function ReservasPage({ permisos = [], usuario }) {
                             </form>
                         )}
                         {mesas.length === 0 ? <p className="empty-state">No hay mesas registradas{puedeGestionarMesas ? '; agrega la primera.' : '.'}</p> : (
-                            <div className="data-table-wrap">
+                            <div className="data-table-wrap" tabIndex={0}>
                                 <table className="data-table">
                                     <thead><tr><th>Mesa</th>{eligeSucursal && <th>Sucursal</th>}<th>Capacidad</th><th>Ahora</th>{puedeGestionarMesas && <th>Acciones</th>}</tr></thead>
                                     <tbody>{mesas.map((mesa) => (

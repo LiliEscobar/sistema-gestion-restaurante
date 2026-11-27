@@ -165,7 +165,7 @@ function CajaPage({ usuario }) {
                     Arqueo: esperado {dinero(cierre.efectivoEsperado)} · contado {dinero(cierre.efectivoContado)} · diferencia {dinero(cierre.diferencia)}.
                 </div>
             )}
-            {cargando ? <p className="loading-state">Consultando caja…</p> :
+            {cargando ? <p className="loading-state" role="status">Consultando caja…</p> :
                 errorCarga ? <div className="notice is-error" role="alert">No se pudo consultar tu turno: {errorCarga}</div> :
                 !turno ? (
                     <form className="surface-card" onSubmit={abrir}>
@@ -207,7 +207,7 @@ function CajaPage({ usuario }) {
 
                         <section className="surface-card" style={{ marginTop: 16 }}>
                             <h2>Cobros por método</h2>
-                            <div className="data-table-wrap">
+                            <div className="data-table-wrap" tabIndex={0}>
                                 <table className="data-table">
                                     <thead><tr><th>Método</th><th>Cobros</th><th>Total</th></tr></thead>
                                     <tbody>{Object.entries(turno.resumen?.porMetodo || {}).map(([metodo, fila]) => (
@@ -275,7 +275,7 @@ function CajaPage({ usuario }) {
                         <section className="surface-card">
                             <h2>Movimientos de este turno</h2>
                             {turno.movimientos.length === 0 ? <p className="empty-state">No hay movimientos registrados.</p> : (
-                                <div className="data-table-wrap">
+                                <div className="data-table-wrap" tabIndex={0}>
                                     <table className="data-table">
                                         <thead><tr><th>Fecha</th><th>Tipo</th><th>Motivo</th><th>Monto</th></tr></thead>
                                         <tbody>
@@ -311,7 +311,7 @@ function CajaPage({ usuario }) {
                     <h2>Turnos recientes</h2>
                     {errorTurnos ? <div className="notice is-error" role="alert">No se pudieron cargar los turnos: {errorTurnos}</div> :
                         turnos.length === 0 ? <p className="empty-state">No hay turnos registrados.</p> : (
-                            <div className="data-table-wrap">
+                            <div className="data-table-wrap" tabIndex={0}>
                                 <table className="data-table">
                                     <thead><tr><th>Turno</th><th>Sucursal</th><th>Usuario</th><th>Apertura</th><th>Cierre</th><th>Diferencia</th></tr></thead>
                                     <tbody>{turnos.map((fila) => (

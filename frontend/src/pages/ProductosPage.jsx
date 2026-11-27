@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
 import { solicitudApi } from '../api.js';
 import { useEnfoqueEdicion } from '../enfoque.js';
+import CatalogoMenu from '../../components/catalogo-menu.jsx';
+import { puedeElegirSucursal } from '../permisos.js';
 
 const vacio = { codigo: '', nombre: '', descripcion: '', categoriaId: '', tipo: 'elaborado', precioVenta: '', insumoReventaId: '' };
 const lineaVacia = { insumoId: '', cantidad: '' };
@@ -9,7 +11,7 @@ const lineaVacia = { insumoId: '', cantidad: '' };
 // Consulta: cualquier usuario autenticado. Alta, edición, receta y baja: solo administrador.
 // Reglas del esquema: un elaborado necesita receta; uno de reventa, un insumo activo por unidad;
 // el tipo no cambia; la baja es activo = false. Los modificadores no existen en el esquema.
-function ProductosPage({ permisos = [] }) {
+function ProductosPage({ permisos = [], usuario }) {
     const puedeVer = permisos.includes('ver_menu');
     const puedeGestionar = permisos.includes('gestionar_productos');
     const [productos, setProductos] = useState([]);
@@ -26,6 +28,11 @@ function ProductosPage({ permisos = [] }) {
     const [error, setError] = useState('');
     const [mensaje, setMensaje] = useState('');
     const [recarga, setRecarga] = useState(0);
+    // Consulta de existencias en la carta: el administrador elige sucursal; el resto usa la suya.
+    const eligeSucursal = puedeElegirSucursal(usuario);
+    const [sucursales, setSucursales] = useState([]);
+    const [errorSucursales, setErrorSucursales] = useState('');
+    const [sucursalConsulta, setSucursalConsulta] = useState('');
     const { formularioRef, listadoRef, volverAlListado } = useEnfoqueEdicion(enEdicion?.id, cargando);
 
     const cargar = useCallback(() => {
@@ -33,6 +40,15 @@ function ProductosPage({ permisos = [] }) {
         setErrorCarga('');
         setRecarga((actual) => actual + 1);
     }, []);
+
+    useEffect(() => {
+        if (!eligeSucursal || !puedeVer) return undefined;
+        let activo = true;
+        solicitudApi('/sucursales')
+            .then((respuesta) => { if (activo) setSucursales(respuesta.sucursales); })
+            .catch((fallo) => { if (activo) setErrorSucursales(fallo.message); });
+        return () => { activo = false; };
+    }, [eligeSucursal, puedeVer]);
 
     useEffect(() => {
         if (!puedeVer) return undefined;
@@ -163,7 +179,7 @@ function ProductosPage({ permisos = [] }) {
 
             {puedeGestionar && !cargando && !errorCarga && (
                 <div className="form-grid">
-                    <form className="surface-card" onSubmit={guardar} ref={formularioRef} aria-label={enEdicion ? `Editar ${enEdicion.codigo}` : 'Nuevo producto'}>
+                    <form className={`surface-card${enEdicion ? ' is-editing' : ''}`} onSubmit={guardar} ref={formularioRef} aria-label={enEdicion ? `Editar ${enEdicion.codigo}` : 'Nuevo producto'}>
                         <div className="page-heading">
                             <h2>{enEdicion ? `Editar ${enEdicion.codigo}` : 'Nuevo producto'}</h2>
                             {enEdicion && <button className="secondary-button" type="button" onClick={cancelarEdicion}>Cancelar edición</button>}
@@ -235,7 +251,7 @@ function ProductosPage({ permisos = [] }) {
                     ) : detalle.recetas.length === 0 ? (
                         <p className="empty-state">Este producto no tiene receta registrada.</p>
                     ) : (
-                        <div className="data-table-wrap">
+                        <div className="data-table-wrap" tabIndex={0}>
                             <table className="data-table">
                                 <thead><tr><th>Insumo</th><th>Cantidad por porción</th></tr></thead>
                                 <tbody>{detalle.recetas.map((linea) => (
@@ -250,15 +266,37 @@ function ProductosPage({ permisos = [] }) {
                 </section>
             )}
 
+            {puedeVer && !cargando && !errorCarga && (
+                <section className="surface-card" style={{ marginTop: 16 }} aria-labelledby="carta-secciones">
+                    <h2 id="carta-secciones">Carta por secciones</h2>
+                    <p className="form-help">Consulta los productos activos por sección y la receta de cada uno.</p>
+                    {eligeSucursal && (
+                        <label className="form-field catalogo-sucursal">
+                            Sucursal para consultar existencias
+                            <select value={sucursalConsulta} onChange={(event) => setSucursalConsulta(event.target.value)} disabled={Boolean(errorSucursales)}>
+                                <option value="">Elige una sucursal</option>
+                                {sucursales.map((sucursal) => <option key={sucursal.id} value={sucursal.id}>{sucursal.nombre}</option>)}
+                            </select>
+                        </label>
+                    )}
+                    {errorSucursales && <div className="notice is-info" role="status">No se pudieron cargar las sucursales: {errorSucursales}. Las recetas siguen disponibles.</div>}
+                    <CatalogoMenu
+                        productos={productos.filter((producto) => producto.activo !== false)}
+                        sucursalId={eligeSucursal ? sucursalConsulta : usuario?.sucursalId ?? ''}
+                        nombreSucursal={eligeSucursal ? sucursales.find((s) => String(s.id) === sucursalConsulta)?.nombre : undefined}
+                    />
+                </section>
+            )}
+
             {!puedeVer ? (
                 <div className="notice is-info">Tu cuenta no tiene acceso a la consulta del menú.</div>
             ) : (
                 <section className="surface-card" style={{ marginTop: 16 }} ref={listadoRef}>
                     <h2 tabIndex={-1}>{puedeGestionar ? 'Productos' : 'Productos activos'}</h2>
-                    {cargando ? <p className="loading-state">Cargando menú…</p> :
+                    {cargando ? <p className="loading-state" role="status">Cargando menú…</p> :
                         errorCarga ? <div className="notice is-error" role="alert">No se pudo cargar el menú: {errorCarga}</div> :
                         productos.length === 0 ? <p className="empty-state">No hay productos registrados.</p> : (
-                            <div className="data-table-wrap">
+                            <div className="data-table-wrap" tabIndex={0}>
                                 <table className="data-table">
                                     <thead><tr><th>Código</th><th>Producto</th><th>Categoría</th><th>Precio</th><th>Tipo</th>{puedeGestionar && <th>Estado</th>}<th>Acciones</th></tr></thead>
                                     <tbody>

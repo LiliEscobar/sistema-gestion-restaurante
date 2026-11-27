@@ -69,7 +69,7 @@ function ReportesPage({ usuario }) {
     const tabla = (titulo, seccion, contenido) => (
         <section className="surface-card">
             <h2>{titulo}</h2>
-            {cargando ? <p className="loading-state">Cargando…</p> :
+            {cargando ? <p className="loading-state" role="status">Cargando…</p> :
                 errores[seccion] ? <div className="notice is-error" role="alert">No se pudo cargar: {errores[seccion]}</div> :
                 datos[seccion] ? contenido(datos[seccion]) : null}
         </section>
@@ -106,7 +106,7 @@ function ReportesPage({ usuario }) {
                         <article className="stat-card"><p className="stat-card-label">Pendiente de cobro</p><p className="stat-card-value">{dinero(r.resumen.pendienteCobro)}</p><p className="stat-card-note">Cobrado {dinero(r.resumen.cobrado)}</p></article>
                     </section>
                     {vacia(r.porProducto, 'No hubo ventas en el período.', () => (
-                        <div className="data-table-wrap">
+                        <div className="data-table-wrap" tabIndex={0}>
                             <table className="data-table">
                                 <thead><tr><th>Producto más vendido</th><th>Unidades</th><th>Importe</th></tr></thead>
                                 <tbody>{r.porProducto.map((fila) => <tr key={fila.productoId}><td>{fila.nombre}</td><td>{fila.cantidad}</td><td>{dinero(fila.importe)}</td></tr>)}</tbody>
@@ -114,7 +114,7 @@ function ReportesPage({ usuario }) {
                         </div>
                     ))}
                     {r.porDia.length > 0 && (
-                        <div className="data-table-wrap">
+                        <div className="data-table-wrap" tabIndex={0}>
                             <table className="data-table">
                                 <thead><tr><th>Día</th><th>Ventas</th><th>Total</th></tr></thead>
                                 <tbody>{r.porDia.map((fila) => <tr key={fila.dia}><td>{mostrarFecha(fila.dia)}</td><td>{fila.ventas}</td><td>{dinero(fila.total)}</td></tr>)}</tbody>
@@ -123,13 +123,13 @@ function ReportesPage({ usuario }) {
                     )}
                     {(r.porMetodo.length > 0 || r.porDocumento.length > 0) && (
                         <div className="form-grid">
-                            <div className="data-table-wrap">
+                            <div className="data-table-wrap" tabIndex={0}>
                                 <table className="data-table">
                                     <thead><tr><th>Método de cobro</th><th>Cobros</th><th>Total</th></tr></thead>
                                     <tbody>{r.porMetodo.map((fila) => <tr key={fila.metodo}><td>{metodos[fila.metodo] || fila.metodo}</td><td>{fila.cobros}</td><td>{dinero(fila.total)}</td></tr>)}</tbody>
                                 </table>
                             </div>
-                            <div className="data-table-wrap">
+                            <div className="data-table-wrap" tabIndex={0}>
                                 <table className="data-table">
                                     <thead><tr><th>Documento</th><th>Emitidos</th><th>Total</th></tr></thead>
                                     <tbody>{r.porDocumento.map((fila) => <tr key={fila.tipoDocumento}><td>{documentos[fila.tipoDocumento] || fila.tipoDocumento}</td><td>{fila.documentos}</td><td>{dinero(fila.total)}</td></tr>)}</tbody>
@@ -144,7 +144,7 @@ function ReportesPage({ usuario }) {
                 <>
                     <p>{r.alertas.length} insumo(s) en o bajo el mínimo, {r.agotados} agotado(s). Movimientos del período: {r.movimientos.map((m) => `${m.tipo} ${m.movimientos}`).join(' · ') || 'ninguno'}.</p>
                     {vacia(r.alertas, 'No hay alertas de stock.', () => (
-                        <div className="data-table-wrap">
+                        <div className="data-table-wrap" tabIndex={0}>
                             <table className="data-table">
                                 <thead><tr><th>Sucursal</th><th>Insumo</th><th>Actual</th><th>Mínimo</th></tr></thead>
                                 <tbody>{r.alertas.map((fila) => <tr key={`${fila.sucursalId}-${fila.insumoId}`}><td>{fila.sucursal}</td><td>{fila.insumo}</td><td>{Number(fila.cantidadActual)} {fila.unidad}</td><td>{Number(fila.cantidadMinima)} {fila.unidad}</td></tr>)}</tbody>
@@ -158,7 +158,7 @@ function ReportesPage({ usuario }) {
                 <>
                     <p>{r.resumen.compras} compra(s) en el período por {dinero(r.resumen.total)} (IVA {dinero(r.resumen.iva)}). Saldo pendiente actual: {dinero(r.resumen.saldoPendiente)}.</p>
                     {vacia(r.cuentasPorPagar, 'No hay cuentas por pagar.', () => (
-                        <div className="data-table-wrap">
+                        <div className="data-table-wrap" tabIndex={0}>
                             <table className="data-table">
                                 <thead><tr><th>Proveedor</th><th>Facturas con saldo</th><th>Saldo</th></tr></thead>
                                 <tbody>{r.cuentasPorPagar.map((fila) => <tr key={fila.proveedorId}><td>{fila.proveedor}</td><td>{fila.facturas}</td><td>{dinero(fila.saldo)}</td></tr>)}</tbody>
@@ -172,7 +172,7 @@ function ReportesPage({ usuario }) {
                 <>
                     <p>{r.resumen.turnos} turno(s) cerrados · diferencia neta {dinero(r.resumen.diferenciaNeta)} · {r.resumen.conFaltante} con faltante · {r.resumen.conSobrante} con sobrante.</p>
                     {vacia(r.turnos, 'No se cerraron turnos en el período.', () => (
-                        <div className="data-table-wrap">
+                        <div className="data-table-wrap" tabIndex={0}>
                             <table className="data-table">
                                 <thead><tr><th>Turno</th><th>Sucursal</th><th>Usuario</th><th>Cierre</th><th>Esperado</th><th>Contado</th><th>Diferencia</th></tr></thead>
                                 <tbody>{r.turnos.map((t) => <tr key={t.id}><td>#{t.id}</td><td>{t.sucursal?.nombre}</td><td>{t.usuario?.nombreCompleto}</td><td>{mostrarFecha(t.fechaCierre, true)}</td><td>{dinero(t.efectivoEsperado)}</td><td>{dinero(t.efectivoContado)}</td><td>{dinero(t.diferencia)}</td></tr>)}</tbody>
@@ -183,7 +183,7 @@ function ReportesPage({ usuario }) {
             ))}
 
             {tabla('Planillas', 'planillas', (r) => vacia(r.planillas, 'No hay planillas en el período.', () => (
-                <div className="data-table-wrap">
+                <div className="data-table-wrap" tabIndex={0}>
                     <table className="data-table">
                         <thead><tr><th>Período</th><th>Empleados</th><th>Salarios</th><th>ISSS</th><th>AFP</th><th>Renta</th><th>Neto</th></tr></thead>
                         <tbody>{r.planillas.map((p) => <tr key={p.id}><td>{mostrarFecha(p.periodoInicio)} – {mostrarFecha(p.periodoFin)}</td><td>{p.empleados}</td><td>{dinero(p.salarios)}</td><td>{dinero(p.isss)}</td><td>{dinero(p.afp)}</td><td>{dinero(p.renta)}</td><td>{dinero(p.neto)}</td></tr>)}</tbody>

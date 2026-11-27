@@ -192,14 +192,14 @@ function UsuariosPage({ usuarioActual, permisos = [] }) {
             {error && <div className="notice is-error" role="alert">{error}</div>}
             {mensaje && <div className="notice" role="status">{mensaje}</div>}
 
-            <form className="surface-card" onSubmit={enEdicion ? guardarEdicion : crear} ref={formularioRef} noValidate aria-label={enEdicion ? `Editar ${enEdicion.correo}` : 'Nuevo usuario'}>
+            <form className={`surface-card${enEdicion ? ' is-editing' : ''}`} onSubmit={enEdicion ? guardarEdicion : crear} ref={formularioRef} noValidate aria-label={enEdicion ? `Editar ${enEdicion.correo}` : 'Nuevo usuario'}>
                 <div className="page-heading">
                     <h2>{enEdicion ? `Editar ${enEdicion.correo}` : 'Nuevo usuario'}</h2>
                     {enEdicion && <button className="secondary-button" type="button" onClick={cancelarEdicion}>Cancelar edición</button>}
                 </div>
                 {enEdicion && <p className="notice is-info" role="status">Modo edición: los cambios no se guardan hasta pulsar «Guardar cambios». El correo no se puede cambiar.</p>}
                 {errorFormulario && <div className="notice is-error" role="alert">{errorFormulario}</div>}
-                {cargandoCatalogos ? <p className="loading-state">Cargando roles y sucursales…</p> :
+                {cargandoCatalogos ? <p className="loading-state" role="status">Cargando roles y sucursales…</p> :
                     errorCatalogos ? <div className="notice is-error" role="alert">No se pudieron cargar roles y sucursales: {errorCatalogos}. Recarga la página para reintentar.</div> : campos}
                 {!cargandoCatalogos && !errorCatalogos && sinSucursal && <p className="form-help">Los roles distintos de administrador operan en una sucursal: selecciónala.</p>}
                 <button className="primary-button" type="submit" disabled={procesando || cargandoCatalogos || Boolean(errorCatalogos) || !roles.length} style={{ marginTop: 16 }}>
@@ -222,10 +222,10 @@ function UsuariosPage({ usuarioActual, permisos = [] }) {
                         <option value="true">Activos</option><option value="false">Inactivos</option><option value="">Todos</option>
                     </select></label>
                 </div>
-                {cargando ? <p className="loading-state">Cargando usuarios…</p> :
+                {cargando ? <p className="loading-state" role="status">Cargando usuarios…</p> :
                     errorCarga ? <div className="notice is-error" role="alert">No se pudieron cargar los usuarios: {errorCarga}</div> :
                     usuarios.length === 0 ? <p className="empty-state">No hay usuarios con estos filtros.</p> : (
-                        <div className="data-table-wrap">
+                        <div className="data-table-wrap" tabIndex={0}>
                             <table className="data-table">
                                 <thead><tr><th>Nombre</th><th>Correo</th><th>Rol</th><th>Sucursal</th><th>Estado</th><th>Acciones</th></tr></thead>
                                 <tbody>{usuarios.map((usuario) => (
