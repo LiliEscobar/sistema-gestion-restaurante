@@ -1,254 +1,248 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { solicitudApi } from '../api.js';
+import { puedeElegirSucursal as rolEligeSucursal } from '../permisos.js';
 
+const metodosPago = ['Transferencia', 'Efectivo', 'Cheque', 'Tarjeta'];
+
+function dinero(valor) {
+    return `$${Number(valor ?? 0).toFixed(2)}`;
+}
+
+// Contrato: Backend/src/controladores/comprasControlador.js (admin, gerente).
+// La compra suma inventario y deja el saldo como cuenta por pagar; no se edita ni elimina.
+// El IVA (13 %) lo calcula el backend sobre cantidad × costo unitario.
 function ComprasPage({ permisos = [], usuario }) {
     const puedeVerCompras = permisos.includes('ver_compras');
     const puedeRegistrar = permisos.includes('registrar_compras');
     const puedeVerProveedores = permisos.includes('ver_proveedores');
-    const puedeVerInsumos = permisos.includes('ver_inventario');
-    const puedeElegirSucursal = !usuario?.sucursalid && permisos.includes('gestionar_sucursales');
+    const eligeSucursal = rolEligeSucursal(usuario);
     const [compras, setCompras] = useState([]);
     const [proveedores, setProveedores] = useState([]);
     const [insumos, setInsumos] = useState([]);
     const [sucursales, setSucursales] = useState([]);
-    const [sucursalid, setSucursalid] = useState('');
-    const [detalle, setDetalle] = useState({ id_insumo: '', cantidad: '', costo_unitario: '' });
-    const [formulario, setFormulario] = useState({
-        id_proveedor: '',
-        numero_factura_proveedor: '',
-        iva: '0',
-        metodo_pago: 'Transferencia',
-        monto_pagado: '0'
-    });
-    const [nuevoProveedor, setNuevoProveedor] = useState({ nombre_empresa: '', nit: '', telefono: '', correo: '' });
+    const [sucursalId, setSucursalId] = useState(usuario?.sucursalId ? String(usuario.sucursalId) : '');
+    const [detalle, setDetalle] = useState({ insumoId: '', cantidad: '', costoUnitario: '' });
+    const [formulario, setFormulario] = useState({ proveedorId: '', numeroFactura: '', metodoPago: 'Transferencia', montoPagado: '' });
+    const [nuevoProveedor, setNuevoProveedor] = useState({ codigo: '', nombre: '' });
+    const [pago, setPago] = useState({ compraId: '', metodo: 'Transferencia', monto: '' });
     const [cargando, setCargando] = useState(true);
+    const [errorCarga, setErrorCarga] = useState('');
     const [procesando, setProcesando] = useState(false);
     const [error, setError] = useState('');
     const [mensaje, setMensaje] = useState('');
 
-    async function cargar() {
+    const [recarga, setRecarga] = useState(0);
+
+    const cargar = useCallback(() => {
         setCargando(true);
-        setError('');
-        try {
-            const solicitudes = [];
-            const puedeCargarSucursal = !puedeElegirSucursal || sucursalid;
-            if (puedeVerCompras && puedeCargarSucursal) {
-                const query = sucursalid ? `?sucursalid=${sucursalid}` : '';
-                solicitudes.push(solicitudApi(`/compras${query}`));
-            }
-            if (puedeVerProveedores) solicitudes.push(solicitudApi('/proveedores'));
-            if (puedeVerInsumos && puedeCargarSucursal) {
-                const query = sucursalid ? `?sucursalid=${sucursalid}` : '';
-                solicitudes.push(solicitudApi(`/inventario/insumos${query}`));
-            }
-            if (puedeElegirSucursal) solicitudes.push(solicitudApi('/administracion/sucursales'));
-            const respuestas = await Promise.all(solicitudes);
-            let indice = 0;
-            if (puedeVerCompras && puedeCargarSucursal) setCompras(respuestas[indice++].compras);
-            if (puedeVerProveedores) setProveedores(respuestas[indice++].proveedores);
-            if (puedeVerInsumos && puedeCargarSucursal) setInsumos(respuestas[indice++].insumos);
-            if (puedeElegirSucursal) {
-                const activas = respuestas[indice].sucursales.filter((item) => item.activo);
-                setSucursales(activas);
-                if (!sucursalid && activas[0]) setSucursalid(String(activas[0].sucursalid));
-            }
-        } catch (fallo) {
-            setError(fallo.message);
-        } finally {
-            setCargando(false);
-        }
-    }
+        setErrorCarga('');
+        setRecarga((actual) => actual + 1);
+    }, []);
 
     useEffect(() => {
         let activo = true;
-        const solicitudes = [];
-        const puedeCargarSucursal = !puedeElegirSucursal || sucursalid;
-        if (puedeVerCompras && puedeCargarSucursal) {
-            const query = sucursalid ? `?sucursalid=${sucursalid}` : '';
-            solicitudes.push(solicitudApi(`/compras${query}`));
-        }
-        if (puedeVerProveedores) solicitudes.push(solicitudApi('/proveedores'));
-        if (puedeVerInsumos && puedeCargarSucursal) {
-            const query = sucursalid ? `?sucursalid=${sucursalid}` : '';
-            solicitudes.push(solicitudApi(`/inventario/insumos${query}`));
-        }
-        if (puedeElegirSucursal) solicitudes.push(solicitudApi('/administracion/sucursales'));
-        Promise.all(solicitudes).then((respuestas) => {
+        const query = sucursalId ? `?sucursalId=${sucursalId}` : '';
+        Promise.all([
+            puedeVerCompras ? solicitudApi(`/compras${query}`) : Promise.resolve({ compras: [] }),
+            puedeVerProveedores ? solicitudApi('/proveedores') : Promise.resolve({ proveedores: [] }),
+            puedeRegistrar ? solicitudApi('/inventario/insumos?activo=true') : Promise.resolve({ insumos: [] }),
+            eligeSucursal ? solicitudApi('/sucursales') : Promise.resolve({ sucursales: [] })
+        ]).then(([respuestaCompras, respuestaProveedores, respuestaInsumos, respuestaSucursales]) => {
             if (!activo) return;
-            let indice = 0;
-            if (puedeVerCompras && puedeCargarSucursal) setCompras(respuestas[indice++].compras);
-            if (puedeVerProveedores) setProveedores(respuestas[indice++].proveedores);
-            if (puedeVerInsumos && puedeCargarSucursal) setInsumos(respuestas[indice++].insumos);
-            if (puedeElegirSucursal) {
-                const activas = respuestas[indice].sucursales.filter((item) => item.activo);
-                setSucursales(activas);
-                if (!sucursalid && activas[0]) setSucursalid(String(activas[0].sucursalid));
-            }
+            setCompras(respuestaCompras.compras);
+            setProveedores(respuestaProveedores.proveedores);
+            setInsumos(respuestaInsumos.insumos);
+            setSucursales(respuestaSucursales.sucursales);
         }).catch((fallo) => {
-            if (activo) setError(fallo.message);
+            if (activo) setErrorCarga(fallo.message);
         }).finally(() => {
             if (activo) setCargando(false);
         });
         return () => { activo = false; };
-    }, [puedeVerCompras, puedeVerProveedores, puedeVerInsumos, puedeElegirSucursal, sucursalid]);
+    }, [puedeVerCompras, puedeVerProveedores, puedeRegistrar, eligeSucursal, sucursalId, recarga]);
 
-    async function registrarCompra(event) {
-        event.preventDefault();
-        if (!puedeVerProveedores || !puedeVerInsumos) {
-            setError('Para registrar una compra también necesitas permisos para consultar proveedores e insumos.');
-            return;
-        }
-        if (!detalle.id_insumo) {
-            setError('Selecciona el insumo comprado.');
-            return;
-        }
+    async function enviar(path, body, textoExito) {
         setProcesando(true);
         setError('');
         setMensaje('');
         try {
-            const respuesta = await solicitudApi('/compras', {
-                method: 'POST',
-                body: {
-                    ...formulario,
-                    id_proveedor: Number(formulario.id_proveedor),
-                    iva: Number(formulario.iva),
-                    monto_pagado: Number(formulario.monto_pagado),
-                    sucursalid: sucursalid ? Number(sucursalid) : undefined,
-                    detalles: [{
-                        id_insumo: Number(detalle.id_insumo),
-                        cantidad: Number(detalle.cantidad),
-                        costo_unitario: Number(detalle.costo_unitario)
-                    }]
-                }
-            });
-            setMensaje(respuesta.mensaje);
-            setFormulario({ ...formulario, numero_factura_proveedor: '', monto_pagado: '0' });
-            setDetalle({ id_insumo: '', cantidad: '', costo_unitario: '' });
-            await cargar();
+            const respuesta = await solicitudApi(path, { method: 'POST', body });
+            setMensaje(textoExito(respuesta));
+            cargar();
+            return true;
         } catch (fallo) {
             setError(fallo.message);
+            return false;
         } finally {
             setProcesando(false);
+        }
+    }
+
+    async function registrarCompra(event) {
+        event.preventDefault();
+        const monto = String(formulario.montoPagado).trim();
+        const ok = await enviar('/compras', {
+            ...(sucursalId ? { sucursalId: Number(sucursalId) } : {}),
+            proveedorId: Number(formulario.proveedorId),
+            numeroFactura: formulario.numeroFactura.trim(),
+            detalles: [{
+                insumoId: Number(detalle.insumoId),
+                cantidad: String(detalle.cantidad),
+                costoUnitario: String(detalle.costoUnitario)
+            }],
+            pagos: monto && Number(monto) > 0 ? [{ metodo: formulario.metodoPago, monto }] : []
+        }, ({ compra }) => `Compra ${compra.numeroFactura} registrada: total ${dinero(compra.total)}, saldo ${dinero(compra.saldo)}.`);
+        if (ok) {
+            setFormulario({ ...formulario, numeroFactura: '', montoPagado: '' });
+            setDetalle({ insumoId: '', cantidad: '', costoUnitario: '' });
         }
     }
 
     async function registrarProveedor(event) {
         event.preventDefault();
-        setProcesando(true);
-        setError('');
-        setMensaje('');
-        try {
-            const respuesta = await solicitudApi('/proveedores', {
-                method: 'POST',
-                body: nuevoProveedor
-            });
-            setMensaje(respuesta.mensaje);
-            setNuevoProveedor({ nombre_empresa: '', nit: '', telefono: '', correo: '' });
-            await cargar();
-        } catch (fallo) {
-            setError(fallo.message);
-        } finally {
-            setProcesando(false);
-        }
+        const ok = await enviar('/proveedores', {
+            codigo: nuevoProveedor.codigo.trim(),
+            nombre: nuevoProveedor.nombre.trim()
+        }, ({ proveedor }) => `Proveedor ${proveedor.nombre} registrado.`);
+        if (ok) setNuevoProveedor({ codigo: '', nombre: '' });
     }
+
+    async function registrarPago(event) {
+        event.preventDefault();
+        const ok = await enviar(`/compras/${Number(pago.compraId)}/pagos`, {
+            metodo: pago.metodo,
+            monto: String(pago.monto)
+        }, () => 'Abono registrado.');
+        if (ok) setPago({ compraId: '', metodo: pago.metodo, monto: '' });
+    }
+
+    const pendientes = compras.filter((compra) => Number(compra.saldo) > 0);
+    const proveedoresActivos = proveedores.filter((proveedor) => proveedor.activo);
+    const faltaSucursal = eligeSucursal && !sucursalId;
 
     return (
         <>
             <header className="page-heading">
                 <div>
                     <h1>Compras y proveedores</h1>
-                    <p>Registra facturas y entradas de inventario; los pagos en efectivo requieren caja abierta.</p>
+                    <p>Registra facturas de proveedor; cada compra suma inventario y deja su saldo por pagar.</p>
                 </div>
                 <button className="secondary-button" type="button" onClick={cargar} disabled={cargando}>Actualizar</button>
             </header>
             {error && <div className="notice is-error" role="alert">{error}</div>}
             {mensaje && <div className="notice" role="status">{mensaje}</div>}
 
-            {puedeElegirSucursal && (
+            {eligeSucursal && (
                 <label className="form-field" style={{ maxWidth: 360, marginBottom: 16 }}>
                     Sucursal
-                    <select required value={sucursalid} onChange={(event) => {
-                        setSucursalid(event.target.value);
-                        setCargando(true);
-                        setCompras([]);
-                        setInsumos([]);
-                    }}>
-                        <option value="">Selecciona una sucursal</option>
-                        {sucursales.map((sucursal) => <option key={sucursal.sucursalid} value={sucursal.sucursalid}>{sucursal.nombre}</option>)}
+                    <select value={sucursalId} onChange={(event) => { setSucursalId(event.target.value); cargar(); }}>
+                        <option value="">Todas (elige una para registrar)</option>
+                        {sucursales.map((sucursal) => <option key={sucursal.id} value={sucursal.id}>{sucursal.nombre}</option>)}
                     </select>
                 </label>
             )}
-            {puedeElegirSucursal && !sucursalid && (
-                <div className="notice is-info">
-                    {sucursales.length
-                        ? 'Selecciona una sucursal para consultar compras y existencias.'
-                        : 'No hay sucursales activas disponibles para registrar compras.'}
-                </div>
-            )}
 
-            {puedeRegistrar && (
-                <form className="surface-card" onSubmit={registrarCompra}>
-                    <h2>Registrar compra</h2>
-                    {(!puedeVerProveedores || !puedeVerInsumos) && (
-                        <p className="notice is-info">Faltan permisos de lectura para cargar los proveedores o insumos necesarios para la factura.</p>
-                    )}
-                    <div className="form-grid">
-                        <label className="form-field">Proveedor<select required value={formulario.id_proveedor} onChange={(event) => setFormulario({ ...formulario, id_proveedor: event.target.value })}>
-                            <option value="">Selecciona un proveedor</option>
-                            {proveedores.map((proveedor) => <option key={proveedor.id_proveedor} value={proveedor.id_proveedor}>{proveedor.nombre_empresa}</option>)}
-                        </select></label>
-                        <label className="form-field">Número de factura<input maxLength="50" required value={formulario.numero_factura_proveedor} onChange={(event) => setFormulario({ ...formulario, numero_factura_proveedor: event.target.value })} /></label>
-                        <label className="form-field">Insumo<select required value={detalle.id_insumo} onChange={(event) => setDetalle({ ...detalle, id_insumo: event.target.value })}>
-                            <option value="">Selecciona un insumo</option>
-                            {insumos.map((insumo) => <option key={insumo.id_insumo} value={insumo.id_insumo}>{insumo.nombre} · {insumo.unidad_medida}</option>)}
-                        </select></label>
-                        <label className="form-field">Cantidad<input type="number" min="0.01" step="0.01" required value={detalle.cantidad} onChange={(event) => setDetalle({ ...detalle, cantidad: event.target.value })} /></label>
-                        <label className="form-field">Costo por unidad ($)<input type="number" min="0" step="0.0001" required value={detalle.costo_unitario} onChange={(event) => setDetalle({ ...detalle, costo_unitario: event.target.value })} /></label>
-                        <label className="form-field">IVA ($)<input type="number" min="0" step="0.01" value={formulario.iva} onChange={(event) => setFormulario({ ...formulario, iva: event.target.value })} /></label>
-                        <label className="form-field">Pago inicial ($)<input type="number" min="0" step="0.01" value={formulario.monto_pagado} onChange={(event) => setFormulario({ ...formulario, monto_pagado: event.target.value })} /></label>
-                        <label className="form-field">Método de pago<select value={formulario.metodo_pago} onChange={(event) => setFormulario({ ...formulario, metodo_pago: event.target.value })}><option>Efectivo</option><option>Tarjeta</option><option>Transferencia</option><option>Cheque</option></select></label>
-                    </div>
-                    <button className="primary-button" type="submit" disabled={procesando || !puedeVerProveedores || !puedeVerInsumos || (puedeElegirSucursal && !sucursalid)} style={{ marginTop: 16 }}>{procesando ? 'Registrando…' : 'Registrar factura'}</button>
-                </form>
-            )}
-
-            {puedeRegistrar && (
-                <form className="surface-card" onSubmit={registrarProveedor}>
-                    <h2>Registrar proveedor</h2>
-                    <div className="form-grid">
-                        <label className="form-field">Empresa<input maxLength="150" required value={nuevoProveedor.nombre_empresa} onChange={(event) => setNuevoProveedor({ ...nuevoProveedor, nombre_empresa: event.target.value })} /></label>
-                        <label className="form-field">NIT<input maxLength="17" value={nuevoProveedor.nit} onChange={(event) => setNuevoProveedor({ ...nuevoProveedor, nit: event.target.value })} /></label>
-                        <label className="form-field">Teléfono<input maxLength="20" value={nuevoProveedor.telefono} onChange={(event) => setNuevoProveedor({ ...nuevoProveedor, telefono: event.target.value })} /></label>
-                        <label className="form-field">Correo<input type="email" maxLength="150" value={nuevoProveedor.correo} onChange={(event) => setNuevoProveedor({ ...nuevoProveedor, correo: event.target.value })} /></label>
-                    </div>
-                    <button className="secondary-button" type="submit" disabled={procesando} style={{ marginTop: 16 }}>Guardar proveedor</button>
-                </form>
-            )}
-
-            {puedeVerCompras && (
-                <section className="surface-card">
-                    <h2>Facturas recientes</h2>
-                    {cargando ? <p className="loading-state">Cargando compras…</p> :
-                        compras.length === 0 ? <p className="empty-state">No hay compras registradas.</p> : (
-                            <div className="data-table-wrap">
-                                <table className="data-table">
-                                    <thead><tr><th>Factura</th><th>Proveedor</th><th>Fecha</th><th>Total</th><th>Estado</th><th>Detalle</th></tr></thead>
-                                    <tbody>
-                                        {compras.map((compra) => (
-                                            <tr key={compra.id_compra}>
-                                                <td>{compra.numero_factura_proveedor}</td>
-                                                <td>{compra.proveedores.nombre_empresa}</td>
-                                                <td>{new Intl.DateTimeFormat('es-SV', { dateStyle: 'medium' }).format(new Date(compra.fecha_compra))}</td>
-                                                <td>${Number(compra.total_compra).toFixed(2)}</td>
-                                                <td>{compra.estado_pago}</td>
-                                                <td>{compra.compra_detalle.map((linea) => `${linea.insumos.nombre} × ${linea.cantidad}`).join(', ')}</td>
-                                            </tr>
-                                        ))}
-                                    </tbody>
-                                </table>
+            {cargando ? <p className="loading-state" role="status">Cargando compras…</p> :
+                errorCarga ? <div className="notice is-error" role="alert">No se pudieron cargar los datos de compras: {errorCarga}</div> : (
+                <>
+                    {puedeRegistrar && (
+                        <form className="surface-card" onSubmit={registrarCompra}>
+                            <h2>Registrar compra</h2>
+                            {proveedoresActivos.length === 0 && <p className="notice is-info">Registra primero un proveedor activo.</p>}
+                            <div className="form-grid">
+                                <label className="form-field">Proveedor<select required value={formulario.proveedorId} onChange={(event) => setFormulario({ ...formulario, proveedorId: event.target.value })}>
+                                    <option value="">Selecciona un proveedor</option>
+                                    {proveedoresActivos.map((proveedor) => <option key={proveedor.id} value={proveedor.id}>{proveedor.nombre}</option>)}
+                                </select></label>
+                                <label className="form-field">Número de factura<input maxLength="50" required value={formulario.numeroFactura} onChange={(event) => setFormulario({ ...formulario, numeroFactura: event.target.value })} /></label>
+                                <label className="form-field">Insumo<select required value={detalle.insumoId} onChange={(event) => setDetalle({ ...detalle, insumoId: event.target.value })}>
+                                    <option value="">Selecciona un insumo</option>
+                                    {insumos.map((insumo) => <option key={insumo.id} value={insumo.id}>{insumo.nombre} · {insumo.unidadBase}</option>)}
+                                </select></label>
+                                <label className="form-field">Cantidad (unidad base)<input type="number" min="0.001" step="0.001" required value={detalle.cantidad} onChange={(event) => setDetalle({ ...detalle, cantidad: event.target.value })} /></label>
+                                <label className="form-field">Costo unitario sin IVA ($)<input type="number" min="0" step="0.000001" required value={detalle.costoUnitario} onChange={(event) => setDetalle({ ...detalle, costoUnitario: event.target.value })} /></label>
+                                <label className="form-field">Pago inicial ($)<input type="number" min="0" step="0.01" value={formulario.montoPagado} onChange={(event) => setFormulario({ ...formulario, montoPagado: event.target.value })} /></label>
+                                <label className="form-field">Método de pago<select value={formulario.metodoPago} onChange={(event) => setFormulario({ ...formulario, metodoPago: event.target.value })}>
+                                    {metodosPago.map((metodo) => <option key={metodo}>{metodo}</option>)}
+                                </select></label>
                             </div>
-                        )}
-                </section>
+                            {faltaSucursal && <p className="notice is-info">Selecciona la sucursal que recibe la compra.</p>}
+                            <button className="primary-button" type="submit" disabled={procesando || faltaSucursal || !proveedoresActivos.length || !insumos.length} style={{ marginTop: 16 }}>{procesando ? 'Registrando…' : 'Registrar factura'}</button>
+                        </form>
+                    )}
+
+                    {puedeRegistrar && (
+                        <form className="surface-card" onSubmit={registrarProveedor}>
+                            <h2>Registrar proveedor</h2>
+                            <div className="form-grid">
+                                <label className="form-field">Código<input maxLength="30" required value={nuevoProveedor.codigo} onChange={(event) => setNuevoProveedor({ ...nuevoProveedor, codigo: event.target.value })} /></label>
+                                <label className="form-field">Nombre<input maxLength="150" required value={nuevoProveedor.nombre} onChange={(event) => setNuevoProveedor({ ...nuevoProveedor, nombre: event.target.value })} /></label>
+                            </div>
+                            <button className="secondary-button" type="submit" disabled={procesando} style={{ marginTop: 16 }}>Guardar proveedor</button>
+                        </form>
+                    )}
+
+                    {puedeRegistrar && puedeVerCompras && (
+                        <form className="surface-card" onSubmit={registrarPago}>
+                            <h2>Abonar a cuenta por pagar</h2>
+                            {pendientes.length === 0 ? <p className="empty-state">No hay compras con saldo pendiente.</p> : (
+                                <div className="inline-form">
+                                    <label className="form-field">Compra<select required value={pago.compraId} onChange={(event) => setPago({ ...pago, compraId: event.target.value })}>
+                                        <option value="">Selecciona una compra</option>
+                                        {pendientes.map((compra) => <option key={compra.id} value={compra.id}>{compra.numeroFactura} · {compra.proveedor?.nombre} · saldo {dinero(compra.saldo)}</option>)}
+                                    </select></label>
+                                    <label className="form-field">Método<select value={pago.metodo} onChange={(event) => setPago({ ...pago, metodo: event.target.value })}>
+                                        {metodosPago.map((metodo) => <option key={metodo}>{metodo}</option>)}
+                                    </select></label>
+                                    <label className="form-field">Monto ($)<input type="number" min="0.01" step="0.01" required value={pago.monto} onChange={(event) => setPago({ ...pago, monto: event.target.value })} /></label>
+                                    <button className="secondary-button" type="submit" disabled={procesando}>Registrar abono</button>
+                                </div>
+                            )}
+                        </form>
+                    )}
+
+                    {puedeVerCompras && (
+                        <section className="surface-card">
+                            <h2>Facturas recientes</h2>
+                            {compras.length === 0 ? <p className="empty-state">No hay compras registradas.</p> : (
+                                <div className="data-table-wrap" tabIndex={0}>
+                                    <table className="data-table">
+                                        <thead><tr><th>Factura</th><th>Proveedor</th><th>Sucursal</th><th>Fecha</th><th>Total</th><th>Pagado</th><th>Saldo</th></tr></thead>
+                                        <tbody>
+                                            {compras.map((compra) => (
+                                                <tr key={compra.id}>
+                                                    <td>{compra.numeroFactura}</td>
+                                                    <td>{compra.proveedor?.nombre}</td>
+                                                    <td>{compra.sucursal?.nombre}</td>
+                                                    <td>{new Intl.DateTimeFormat('es-SV', { dateStyle: 'medium' }).format(new Date(compra.fecha))}</td>
+                                                    <td>{dinero(compra.total)}</td>
+                                                    <td>{dinero(compra.pagado)}</td>
+                                                    <td><span className={`status-pill ${Number(compra.saldo) > 0 ? 'is-warning' : ''}`}>{dinero(compra.saldo)}</span></td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            )}
+                        </section>
+                    )}
+
+                    {puedeVerProveedores && (
+                        <section className="surface-card">
+                            <h2>Proveedores</h2>
+                            {proveedores.length === 0 ? <p className="empty-state">No hay proveedores registrados.</p> : (
+                                <div className="data-table-wrap" tabIndex={0}>
+                                    <table className="data-table">
+                                        <thead><tr><th>Código</th><th>Nombre</th><th>Estado</th></tr></thead>
+                                        <tbody>{proveedores.map((proveedor) => (
+                                            <tr key={proveedor.id}><td>{proveedor.codigo}</td><td>{proveedor.nombre}</td><td><span className="status-pill">{proveedor.activo ? 'activo' : 'inactivo'}</span></td></tr>
+                                        ))}</tbody>
+                                    </table>
+                                </div>
+                            )}
+                        </section>
+                    )}
+                </>
             )}
         </>
     );

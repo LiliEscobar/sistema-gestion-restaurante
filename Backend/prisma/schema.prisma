@@ -16,6 +16,8 @@ model Sucursal {
   ventas      Venta[]
   turnosCaja  TurnoCaja[]
   empleados   Empleado[]
+  mesas       Mesa[]
+  reservas    Reserva[]
 
   @@map("sucursales")
 }
@@ -43,6 +45,7 @@ model Usuario {
   ventas         Venta[]
   turnosCaja     TurnoCaja[]
   empleados      Empleado[]
+  reservas       Reserva[]
 
   @@map("usuarios")
 }
@@ -364,4 +367,45 @@ model DetallePlanilla {
 
   @@id([planillaId, empleadoId])
   @@map("detalles_planilla")
+}
+
+/// Mesa de una sucursal. No se borra: la baja es activo = false (las reservas la referencian).
+model Mesa {
+  id         Int       @id @default(autoincrement())
+  sucursalId Int       @map("sucursal_id")
+  numero     String    @db.NVarChar(20)
+  capacidad  Int
+  activo     Boolean   @default(true)
+  creadoEn   DateTime  @default(now()) @map("creado_en")
+  sucursal   Sucursal  @relation(fields: [sucursalId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  reservas   Reserva[]
+
+  @@unique([sucursalId, numero])
+  @@unique([id, sucursalId])
+  @@map("mesas")
+}
+
+/// Reserva de una mesa en un intervalo [inicio, fin). No se borra: se cancela con estado = 'cancelada'.
+/// El solapamiento entre reservas activas de una mesa lo impide el backend dentro de una
+/// transacción Serializable que bloquea la fila de la mesa (reserva.service.js).
+model Reserva {
+  id              Int      @id @default(autoincrement())
+  sucursalId      Int      @map("sucursal_id")
+  mesaId          Int      @map("mesa_id")
+  usuarioId       Int      @map("usuario_id")
+  clienteNombre   String   @map("cliente_nombre") @db.NVarChar(150)
+  clienteTelefono String?  @map("cliente_telefono") @db.VarChar(20)
+  personas        Int
+  inicio          DateTime
+  fin             DateTime
+  estado          String   @default("pendiente") @db.VarChar(15)
+  notas           String?  @db.NVarChar(300)
+  creadoEn        DateTime @default(now()) @map("creado_en")
+  sucursal        Sucursal @relation(fields: [sucursalId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  mesa            Mesa     @relation(fields: [mesaId, sucursalId], references: [id, sucursalId], onDelete: NoAction, onUpdate: NoAction)
+  usuario         Usuario  @relation(fields: [usuarioId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([mesaId, inicio])
+  @@index([sucursalId, inicio])
+  @@map("reservas")
 }

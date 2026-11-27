@@ -1,21 +1,23 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import './workspace.css';
+import './workspace-interior.css';
+import './workspace-oscuro.css';
 import Login from '../components/login.jsx';
 import SideNavbar from '../components/side-navbar.jsx';
 import { borrarSesion, leerSesion, guardarSesion, solicitudApi } from './api.js';
+import ReservasPage from './pages/ReservasPage.jsx';
 import { modulosPermitidos } from './navigation.js';
 import InicioPage from './pages/InicioPage.jsx';
 import VentasPage from './pages/VentasPage.jsx';
 import InventarioPage from './pages/InventarioPage.jsx';
 import PlanillasPage from './pages/PlanillasPage.jsx';
 import EmpleadosPage from './pages/EmpleadosPage.jsx';
-import ReservasPage from './pages/ReservasPage.jsx';
 import CajaPage from './pages/CajaPage.jsx';
 import CambiarPasswordPage from './pages/CambiarPasswordPage.jsx';
 import ComprasPage from './pages/ComprasPage.jsx';
 import ProductosPage from './pages/ProductosPage.jsx';
-import UsuariosPage from './pages/UsuariosPage.jsx';
 import AdministracionPage from './pages/AdministracionPage.jsx';
+import UsuariosPage from './pages/UsuariosPage.jsx';
 import ReportesPage from './pages/ReportesPage.jsx';
 import PerfilPage from './pages/PerfilPage.jsx';
 
@@ -39,13 +41,15 @@ function App() {
     const [sesion, setSesion] = useState(leerSesion);
     const [pagina, setPagina] = useState('inicio');
     const [menuAbierto, setMenuAbierto] = useState(false);
+    const menuBotonRef = useRef(null);
+    const contenidoRef = useRef(null);
     const [validandoSesion, setValidandoSesion] = useState(Boolean(leerSesion()?.token));
     const [errorSesion, setErrorSesion] = useState('');
     const [intentoValidacion, setIntentoValidacion] = useState(0);
     const items = useMemo(
-        () => modulosPermitidos(sesion?.usuario?.permisos),
-        [sesion?.usuario?.permisos]
-    );
+    () => modulosPermitidos(sesion?.usuario?.permisos, sesion?.usuario?.rol),
+    [sesion?.usuario?.permisos, sesion?.usuario?.rol]
+);
 
     useEffect(() => {
         function expirarSesion() {
@@ -88,16 +92,21 @@ function App() {
 
     const paginaActual = items.some((item) => item.id === pagina) ? pagina : 'inicio';
 
-    async function cerrar() {
-        try {
-            await solicitudApi('/logout', { method: 'POST' });
-        } catch {
-            // La sesión local se elimina incluso si el servidor dejó de estar disponible.
-        } finally {
-            borrarSesion();
-            setSesion(null);
-            setPagina('inicio');
-        }
+    function cerrarMenu() {
+        setMenuAbierto(false);
+        if (menuAbierto) menuBotonRef.current?.focus();
+    }
+
+    function abrirDesdeInicio(id) {
+        setPagina(id);
+        contenidoRef.current?.focus();
+    }
+
+    // El backend usa JWT sin estado y no expone /logout: cerrar sesión es descartar el token local.
+    function cerrar() {
+        borrarSesion();
+        setSesion(null);
+        setPagina('inicio');
     }
 
     function actualizarSesion(actualizada) {
@@ -158,7 +167,7 @@ function App() {
         const permisos = sesion.usuario.permisos;
         switch (paginaActual) {
             case 'ventas':
-                return <VentasPage permisos={permisos} />;
+                return <VentasPage permisos={permisos} usuario={sesion.usuario} />;
             case 'reservas':
                 return <ReservasPage permisos={permisos} usuario={sesion.usuario} />;
             case 'caja':
@@ -168,7 +177,7 @@ function App() {
             case 'compras':
                 return <ComprasPage permisos={permisos} usuario={sesion.usuario} />;
             case 'productos':
-                return <ProductosPage permisos={permisos} />;
+                return <ProductosPage permisos={permisos} usuario={sesion.usuario} />;
             case 'empleados':
                 return <EmpleadosPage permisos={permisos} usuario={sesion.usuario} />;
             case 'planillas':
@@ -178,7 +187,7 @@ function App() {
             case 'administracion':
                 return <AdministracionPage permisos={permisos} />;
             case 'reportes':
-                return <ReportesPage />;
+                return <ReportesPage usuario={sesion.usuario} />;
             case 'perfil':
                 return <PerfilPage />;
             default:
@@ -186,6 +195,7 @@ function App() {
                     <InicioPage
                         usuario={sesion.usuario}
                         modulosDisponibles={items.filter((item) => item.id !== 'inicio')}
+                        abrirModulo={abrirDesdeInicio}
                     />
                 );
         }
@@ -198,14 +208,16 @@ function App() {
                 selected={paginaActual}
                 onSelect={setPagina}
                 abierta={menuAbierto}
-                onClose={() => setMenuAbierto(false)}
+                onClose={cerrarMenu}
             />
             <main className="workspace-main">
-                <header className="workspace-topbar">
+                <header className="workspace-topbar" data-pagina={paginaActual}>
                     <div className="workspace-topbar-start">
                         <button
                             className="workspace-menu-toggle"
                             type="button"
+                            ref={menuBotonRef}
+                            aria-controls="workspace-sidebar"
                             aria-expanded={menuAbierto}
                             aria-label="Abrir menú de navegación"
                             onClick={() => setMenuAbierto(true)}
@@ -213,7 +225,7 @@ function App() {
                             Menú
                         </button>
                         <div>
-                            <h1 className="workspace-page-title">{titulos[paginaActual] || 'Inicio'}</h1>
+                            <p className="workspace-page-title">{titulos[paginaActual] || 'Inicio'}</p>
                             <p className="workspace-page-subtitle">Sistema de gestión · Orígenes SV</p>
                         </div>
                     </div>
@@ -227,7 +239,7 @@ function App() {
                         <button className="workspace-logout" type="button" onClick={cerrar}>Cerrar sesión</button>
                     </div>
                 </header>
-                <div className="workspace-content">{contenido()}</div>
+                <div className="workspace-content" ref={contenidoRef} tabIndex={-1}>{contenido()}</div>
             </main>
         </div>
     );

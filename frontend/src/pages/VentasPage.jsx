@@ -1,76 +1,136 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import CatalogoMenu from '../../components/catalogo-menu.jsx';
+import FotoProducto from '../../components/foto-producto.jsx';
 import { ApiError, solicitudApi } from '../api.js';
+import { puedeElegirSucursal as rolEligeSucursal } from '../permisos.js';
 
-function VentasPage({ permisos = [] }) {
+const metodosPago = [
+    { valor: 'efectivo', texto: 'Efectivo' },
+    { valor: 'tarjeta', texto: 'Tarjeta' },
+    { valor: 'digital', texto: 'Pago digital' },
+    { valor: 'bitcoin', texto: 'Bitcoin' }
+];
+
+const tiposDocumento = { consumidor_final: 'Factura', ccf: 'Crédito fiscal' };
+
+function fechaHora(valor) {
+    return new Intl.DateTimeFormat('es-SV', { dateStyle: 'short', timeStyle: 'short' }).format(new Date(valor));
+}
+
+// Contrato: Backend/src/controladores/ventasControlador.js (admin, gerente, cajero).
+// POST /api/ventas registra venta + inventario + documento + cobros en una transacción.
+// Una venta registrada no se edita ni se elimina; los estados de cocina no existen en el backend.
+function VentasPage({ permisos = [], usuario }) {
     const puedeRegistrar = permisos.includes('tomar_pedidos');
     const puedeVerVentas = permisos.includes('ver_ventas');
-    const puedeVerCocina = permisos.includes('ver_pedidos_cocina');
-    const puedeVerListado = puedeVerVentas || puedeVerCocina;
-    const puedeGestionarPedidos = puedeRegistrar || puedeVerCocina;
     const puedeVerMenu = permisos.includes('ver_menu');
+    const eligeSucursal = rolEligeSucursal(usuario);
     const [productos, setProductos] = useState([]);
     const [ventas, setVentas] = useState([]);
+    const [clientes, setClientes] = useState([]);
+    const [sucursales, setSucursales] = useState([]);
+    const [turno, setTurno] = useState(null);
+    const [sucursalId, setSucursalId] = useState(usuario?.sucursalId ? String(usuario.sucursalId) : '');
     const [productoId, setProductoId] = useState('');
     const [cantidad, setCantidad] = useState(1);
     const [carrito, setCarrito] = useState([]);
-    const [tipoDocumento, setTipoDocumento] = useState('Factura');
-    const [metodoPago, setMetodoPago] = useState('Efectivo');
-    const [pagoPendiente, setPagoPendiente] = useState(false);
-    const [cargando, setCargando] = useState(true);
-    const [cargandoVentas, setCargandoVentas] = useState(true);
+    const [tipoDocumento, setTipoDocumento] = useState('consumidor_final');
+    const [clienteId, setClienteId] = useState('');
+    const [cobrarAhora, setCobrarAhora] = useState(true);
+    const [metodoPago, setMetodoPago] = useState('efectivo');
+    const [referenciaExterna, setReferenciaExterna] = useState('');
+    const [cargando, setCargando] = useState(puedeRegistrar && puedeVerMenu);
+    const [errorCarga, setErrorCarga] = useState('');
+    const [avisos, setAvisos] = useState([]);
+    const [cargandoVentas, setCargandoVentas] = useState(puedeVerVentas);
+    const [errorVentas, setErrorVentas] = useState('');
     const [procesando, setProcesando] = useState(false);
     const [error, setError] = useState('');
     const [confirmacion, setConfirmacion] = useState(null);
+    const cantidadRef = useRef(null);
+
+    const [recargaVentas, setRecargaVentas] = useState(0);
+
+    const cargarVentas = useCallback(() => {
+        setCargandoVentas(true);
+        setErrorVentas('');
+        setRecargaVentas((actual) => actual + 1);
+    }, []);
 
     useEffect(() => {
+        if (!puedeVerVentas) return undefined;
         let activo = true;
-        const solicitudes = [];
-        if (puedeRegistrar && puedeVerMenu) solicitudes.push(solicitudApi('/productos'));
-        if (puedeVerListado) solicitudes.push(solicitudApi('/ventas?pagina=1&limite=50'));
-        Promise.all(solicitudes).then((respuestas) => {
+        solicitudApi('/ventas?limite=50')
+            .then((respuesta) => { if (activo) setVentas(respuesta.ventas); })
+            .catch((fallo) => { if (activo) setErrorVentas(fallo.message); })
+            .finally(() => { if (activo) setCargandoVentas(false); });
+        return () => { activo = false; };
+    }, [puedeVerVentas, recargaVentas]);
+
+    useEffect(() => {
+        if (!puedeRegistrar || !puedeVerMenu) return undefined;
+        let activo = true;
+        // Solo el menú es indispensable. Clientes, turno y sucursales fallan por separado y avisan,
+        // sin ocultar el formulario de venta.
+        const avisar = (texto) => { if (activo) setAvisos((actuales) => [...actuales, texto]); };
+        Promise.all([
+            solicitudApi('/productos'),
+            solicitudApi('/clientes?activo=true&limite=200').then((r) => r.clientes).catch((fallo) => {
+                avisar(`No se pudieron cargar los clientes para crédito fiscal: ${fallo.message}`);
+                return [];
+            }),
+            // 404 significa que el usuario no tiene turno abierto: la venta se registra sin cobro.
+            solicitudApi('/caja/turnos/actual').then((r) => r.turno).catch((fallo) => {
+                if (!(fallo instanceof ApiError && fallo.status === 404)) {
+                    avisar(`No se pudo consultar tu turno de caja (${fallo.message}); la venta quedará sin cobrar.`);
+                }
+                return null;
+            }),
+            eligeSucursal
+                ? solicitudApi('/sucursales').then((r) => r.sucursales).catch((fallo) => {
+                    avisar(`No se pudieron cargar las sucursales: ${fallo.message}`);
+                    return [];
+                })
+                : Promise.resolve([])
+        ]).then(([respuestaProductos, listaClientes, turnoActual, listaSucursales]) => {
             if (!activo) return;
-            let indice = 0;
-            if (puedeRegistrar && puedeVerMenu) setProductos(respuestas[indice++].productos);
-            if (puedeVerListado) setVentas(respuestas[indice].ventas);
+            setProductos(respuestaProductos.productos);
+            setClientes(listaClientes.filter((cliente) => cliente.aptoCcf));
+            setTurno(turnoActual);
+            setSucursales(listaSucursales);
         }).catch((fallo) => {
-            if (activo) setError(fallo.message);
+            if (activo) setErrorCarga(fallo.message);
         }).finally(() => {
-            if (activo) {
-                setCargando(false);
-                setCargandoVentas(false);
-            }
+            if (activo) setCargando(false);
         });
         return () => { activo = false; };
-    }, [puedeRegistrar, puedeVerMenu, puedeVerListado]);
-
-    async function actualizarEstado(venta, estado_pedido) {
-        setError('');
-        try {
-            await solicitudApi(`/ventas/${venta.id_venta}/estado-pedido`, {
-                method: 'PATCH',
-                body: { estado_pedido }
-            });
-            const respuesta = await solicitudApi('/ventas?pagina=1&limite=50');
-            setVentas(respuesta.ventas);
-        } catch (fallo) {
-            setError(fallo.message);
-        }
-    }
+    }, [puedeRegistrar, puedeVerMenu, eligeSucursal]);
 
     const total = useMemo(() => carrito.reduce(
-        (suma, item) => suma + Math.round(Number(item.precio_venta) * 100) * item.cantidad,
+        (suma, item) => suma + Math.round(Number(item.precioVenta) * 100) * item.cantidad,
         0
     ) / 100, [carrito]);
 
+    // El cobro va al turno abierto, que pertenece a una sucursal: la venta debe ser de esa misma sucursal.
+    const cobrar = Boolean(turno) && cobrarAhora;
+    const sucursalVenta = cobrar ? String(turno.sucursalId) : sucursalId;
+
     function agregarProducto(event) {
         event.preventDefault();
-        const producto = productos.find((item) => item.id_producto === Number(productoId));
-        if (!producto || !Number.isInteger(Number(cantidad)) || Number(cantidad) <= 0) return;
+        const producto = productos.find((item) => item.id === Number(productoId));
+        if (!producto) {
+            setError('Selecciona un producto del menú.');
+            return;
+        }
+        if (!Number.isInteger(Number(cantidad)) || Number(cantidad) < 1 || Number(cantidad) > 999) {
+            setError('La cantidad debe ser un número entero entre 1 y 999.');
+            return;
+        }
 
         setCarrito((actual) => {
-            const existente = actual.find((item) => item.id_producto === producto.id_producto);
+            const existente = actual.find((item) => item.id === producto.id);
             if (existente) {
-                return actual.map((item) => item.id_producto === producto.id_producto
+                return actual.map((item) => item.id === producto.id
                     ? { ...item, cantidad: item.cantidad + Number(cantidad) }
                     : item);
             }
@@ -88,6 +148,10 @@ function VentasPage({ permisos = [] }) {
             setError('Agrega al menos un producto a la venta.');
             return;
         }
+        if (tipoDocumento === 'ccf' && !clienteId) {
+            setError('El crédito fiscal requiere un cliente con razón social, NIT y NRC.');
+            return;
+        }
 
         setProcesando(true);
         setError('');
@@ -96,22 +160,41 @@ function VentasPage({ permisos = [] }) {
             const respuesta = await solicitudApi('/ventas', {
                 method: 'POST',
                 body: {
+                    ...(sucursalVenta ? { sucursalId: Number(sucursalVenta) } : {}),
                     tipoDocumento,
-                    metodoPago,
-                    pagoPendiente,
-                    productos: carrito.map(({ id_producto, cantidad: cantidadItem }) => ({
-                        id_producto,
-                        cantidad: cantidadItem
-                    }))
+                    ...(tipoDocumento === 'ccf' ? { clienteId: Number(clienteId) } : {}),
+                    lineas: carrito.map((item) => ({ productoId: item.id, cantidad: item.cantidad })),
+                    ...(cobrar ? {
+                        turnoId: turno.id,
+                        pagos: [{
+                            metodo: metodoPago,
+                            monto: total.toFixed(2),
+                            ...(referenciaExterna.trim() ? { referenciaExterna: referenciaExterna.trim() } : {})
+                        }]
+                    } : {})
                 }
             });
-            setConfirmacion(respuesta);
+            setConfirmacion(respuesta.venta);
             setCarrito([]);
+            setReferenciaExterna('');
+            cargarVentas();
         } catch (fallo) {
             setError(fallo instanceof ApiError ? fallo.message : 'No se pudo registrar la venta.');
         } finally {
             setProcesando(false);
         }
+    }
+
+    const faltaSucursal = eligeSucursal && !sucursalVenta;
+    const nombreSucursalVenta = sucursales.find((sucursal) => String(sucursal.id) === String(sucursalVenta))?.nombre
+        || (sucursalVenta ? 'tu sucursal' : '');
+
+    // Elegir en el catálogo solo prepara la línea: la cantidad y «Agregar» siguen siendo el formulario existente.
+    function elegirDelCatalogo(producto) {
+        setProductoId(String(producto.id));
+        setError('');
+        cantidadRef.current?.focus();
+        cantidadRef.current?.select();
     }
 
     return (
@@ -125,137 +208,205 @@ function VentasPage({ permisos = [] }) {
             {error && <div className="notice is-error" role="alert">{error}</div>}
             {confirmacion && (
                 <div className="notice" role="status">
-                    Venta {confirmacion.correlativo} registrada por ${Number(confirmacion.total).toFixed(2)}.
-                    {confirmacion.inventario?.productos_sin_receta?.length > 0 &&
-                        ` Sin receta: ${confirmacion.inventario.productos_sin_receta.map((item) => item.nombre).join(', ')}.`}
+                    Venta #{confirmacion.id} registrada por ${Number(confirmacion.total).toFixed(2)}
+                    {confirmacion.documento && ` · ${tiposDocumento[confirmacion.documento.tipoDocumento] || confirmacion.documento.tipoDocumento} ${confirmacion.documento.correlativo ?? ''}`}
+                    {Number(confirmacion.saldoPendiente) > 0 && ` · Saldo pendiente $${Number(confirmacion.saldoPendiente).toFixed(2)} (cóbralo desde Caja).`}
                 </div>
             )}
+
+            {!puedeRegistrar && !puedeVerVentas && (
+                <div className="notice is-info" role="status">
+                    Tu rol ({usuario?.rol || 'sin rol'}) no tiene acceso a ventas. Solo administrador, gerente y cajero pueden registrarlas o consultarlas.
+                </div>
+            )}
+            {avisos.map((aviso) => <div className="notice is-info" role="status" key={aviso}>{aviso}</div>)}
 
             {puedeRegistrar && !puedeVerMenu && (
                 <div className="notice is-error" role="alert">
-                    Tu cuenta puede tomar pedidos, pero no tiene permiso para consultar el menú. Solicita `ver_menu` al administrador.
+                    Tu cuenta puede registrar ventas, pero no tiene acceso al menú.
                 </div>
             )}
 
-            {puedeRegistrar && puedeVerMenu && <section className="surface-card">
-                <h2>Agregar productos</h2>
-                {cargando ? <p className="loading-state">Cargando menú…</p> : productos.length === 0 ? (
-                    <p className="empty-state">No hay productos activos para vender.</p>
-                ) : (
-                    <form className="inline-form" onSubmit={agregarProducto}>
-                        <label className="form-field">
-                            Producto
-                            <select required value={productoId} onChange={(event) => setProductoId(event.target.value)}>
-                                <option value="">Selecciona un producto</option>
-                                {productos.map((producto) => (
-                                    <option key={producto.id_producto} value={producto.id_producto}>
-                                        {producto.nombre} · ${Number(producto.precio_venta).toFixed(2)}
-                                    </option>
-                                ))}
-                            </select>
-                        </label>
-                        <label className="form-field" style={{ maxWidth: 130 }}>
-                            Cantidad
-                            <input min="1" step="1" type="number" value={cantidad} onChange={(event) => setCantidad(event.target.value)} />
-                        </label>
-                        <button className="secondary-button" type="submit">Agregar</button>
+            {puedeRegistrar && puedeVerMenu && (cargando ? <p className="loading-state" role="status">Cargando menú…</p> :
+                errorCarga ? <div className="notice is-error" role="alert">No se pudo preparar el registro de ventas: {errorCarga}</div> : (
+                <>
+                    <section className="surface-card sales-selection">
+                        <h2>Agregar productos</h2>
+                        <p className="form-help">Elige una sección, consulta la receta si lo necesitas y agrega el producto con su cantidad.</p>
+                        {productos.length === 0 ? (
+                            <p className="empty-state">No hay productos activos para vender.</p>
+                        ) : (
+                            <>
+                                <CatalogoMenu
+                                    productos={productos}
+                                    sucursalId={sucursalVenta}
+                                    nombreSucursal={nombreSucursalVenta}
+                                    seleccionadoId={Number(productoId) || null}
+                                    textoElegir="Elegir para la venta"
+                                    onElegir={elegirDelCatalogo}
+                                />
+                                <form className="inline-form" onSubmit={agregarProducto}>
+                                    <div className="form-field">
+                                        <label htmlFor="ventas-producto">Producto</label>
+                                        <select id="ventas-producto" required value={productoId} onChange={(event) => setProductoId(event.target.value)}>
+                                            <option value="">Selecciona un producto</option>
+                                            {productos.map((producto) => (
+                                                <option key={producto.id} value={producto.id}>
+                                                    {producto.nombre} · ${Number(producto.precioVenta).toFixed(2)}
+                                                </option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                    <label className="form-field sales-quantity">
+                                        Cantidad
+                                        <input ref={cantidadRef} min="1" max="999" step="1" type="number" value={cantidad} onChange={(event) => setCantidad(event.target.value)} />
+                                    </label>
+                                    <button className="secondary-button" type="submit">Agregar</button>
+                                </form>
+                            </>
+                        )}
+                    </section>
+
+                    <form onSubmit={registrarVenta}>
+                        <section className="surface-card">
+                            <h2>Detalle de venta</h2>
+                            {carrito.length === 0 ? <p className="empty-state">Todavía no hay productos en esta venta.</p> : (
+                                <ul className="cart-list">
+                                    {carrito.map((item) => (
+                                        <li className="cart-row" key={item.id}>
+                                            <span className="cart-product">
+                                                <FotoProducto codigo={item.codigo} categoria={item.categoria?.nombre} />
+                                                <span>
+                                                    <strong>{item.nombre}</strong>
+                                                    <span className="sale-product-price">${Number(item.precioVenta).toFixed(2)} por unidad</span>
+                                                </span>
+                                            </span>
+                                            <input
+                                                aria-label={`Cantidad de ${item.nombre}`}
+                                                min="1"
+                                                max="999"
+                                                step="1"
+                                                type="number"
+                                                value={item.cantidad}
+                                                onChange={(event) => {
+                                                    const next = Number(event.target.value);
+                                                    if (!Number.isInteger(next) || next < 1) return;
+                                                    setCarrito((actual) => actual.map((producto) =>
+                                                        producto.id === item.id ? { ...producto, cantidad: next } : producto
+                                                    ));
+                                                }}
+                                            />
+                                            <button
+                                                className="danger-button"
+                                                type="button"
+                                                aria-label={`Quitar ${item.nombre}`}
+                                                onClick={() => setCarrito((actual) => actual.filter((producto) => producto.id !== item.id))}
+                                            >
+                                                Quitar
+                                            </button>
+                                        </li>
+                                    ))}
+                                </ul>
+                            )}
+                            <div className="sales-total">
+                                <span>Total</span>
+                                <strong>${total.toFixed(2)}</strong>
+                            </div>
+                            <div className="form-grid sales-options">
+                                {eligeSucursal && (
+                                    <label className="form-field">
+                                        Sucursal
+                                        <select required value={sucursalVenta} disabled={cobrar} onChange={(event) => setSucursalId(event.target.value)}>
+                                            <option value="">Selecciona una sucursal</option>
+                                            {sucursales.map((sucursal) => <option key={sucursal.id} value={sucursal.id}>{sucursal.nombre}</option>)}
+                                            {sucursalVenta && !sucursales.some((sucursal) => String(sucursal.id) === sucursalVenta) && (
+                                                <option value={sucursalVenta}>{(cobrar && turno.sucursal?.nombre) || `Sucursal #${sucursalVenta}`}</option>
+                                            )}
+                                        </select>
+                                    </label>
+                                )}
+                                <label className="form-field">
+                                    Documento
+                                    <select value={tipoDocumento} onChange={(event) => setTipoDocumento(event.target.value)}>
+                                        <option value="consumidor_final">Factura (consumidor final)</option>
+                                        <option value="ccf">Crédito fiscal</option>
+                                    </select>
+                                </label>
+                                {tipoDocumento === 'ccf' && (
+                                    <label className="form-field">
+                                        Cliente (CCF)
+                                        <select required value={clienteId} onChange={(event) => setClienteId(event.target.value)}>
+                                            <option value="">{clientes.length ? 'Selecciona un cliente' : 'No hay clientes aptos para CCF'}</option>
+                                            {clientes.map((cliente) => <option key={cliente.id} value={cliente.id}>{cliente.razonSocial} · NIT {cliente.nit}</option>)}
+                                        </select>
+                                    </label>
+                                )}
+                                {turno ? (
+                                    <>
+                                        <label className="form-field sales-pending-option">
+                                            <span>Pago</span>
+                                            <span><input type="checkbox" checked={cobrarAhora} onChange={(event) => setCobrarAhora(event.target.checked)} /> Cobrar ahora en mi turno de caja ({turno.sucursal?.nombre})</span>
+                                        </label>
+                                        {cobrarAhora && (
+                                            <>
+                                                <label className="form-field">
+                                                    Método de pago
+                                                    <select value={metodoPago} onChange={(event) => setMetodoPago(event.target.value)}>
+                                                        {metodosPago.map((metodo) => <option key={metodo.valor} value={metodo.valor}>{metodo.texto}</option>)}
+                                                    </select>
+                                                </label>
+                                                {metodoPago !== 'efectivo' && (
+                                                    <label className="form-field">
+                                                        Referencia externa
+                                                        <input maxLength="60" value={referenciaExterna} onChange={(event) => setReferenciaExterna(event.target.value)} />
+                                                    </label>
+                                                )}
+                                            </>
+                                        )}
+                                    </>
+                                ) : (
+                                    <p className="notice is-info">No tienes un turno de caja abierto: la venta quedará pendiente de cobro. Abre un turno en Caja para cobrar.</p>
+                                )}
+                            </div>
+                            <div className="sales-submit">
+                                {carrito.length === 0 && <span className="form-help">Agrega al menos un producto para registrar la venta. </span>}
+                                {faltaSucursal && <span className="form-help">Selecciona la sucursal de la venta. </span>}
+                                <button className="primary-button" type="submit" disabled={procesando || carrito.length === 0 || faltaSucursal}>
+                                    {procesando ? 'Registrando…' : 'Registrar venta'}
+                                </button>
+                            </div>
+                        </section>
                     </form>
-                )}
-            </section>}
+                </>
+            ))}
 
-            {puedeRegistrar && puedeVerMenu && <form onSubmit={registrarVenta}>
+            {puedeVerVentas && (
                 <section className="surface-card">
-                    <h2>Detalle de venta</h2>
-                    {carrito.length === 0 ? <p className="empty-state">Todavía no hay productos en esta venta.</p> : (
-                        <ul className="cart-list">
-                            {carrito.map((item) => (
-                                <li className="cart-row" key={item.id_producto}>
-                                    <span><strong>{item.nombre}</strong><br />${Number(item.precio_venta).toFixed(2)} por unidad</span>
-                                    <input
-                                        aria-label={`Cantidad de ${item.nombre}`}
-                                        min="1"
-                                        step="1"
-                                        type="number"
-                                        value={item.cantidad}
-                                        onChange={(event) => {
-                                            const next = Number(event.target.value);
-                                            if (!Number.isInteger(next) || next < 1) return;
-                                            setCarrito((actual) => actual.map((producto) =>
-                                                producto.id_producto === item.id_producto
-                                                    ? { ...producto, cantidad: next }
-                                                    : producto
-                                            ));
-                                        }}
-                                    />
-                                    <button
-                                        className="danger-button"
-                                        type="button"
-                                        aria-label={`Quitar ${item.nombre}`}
-                                        onClick={() => setCarrito((actual) => actual.filter((producto) => producto.id_producto !== item.id_producto))}
-                                    >
-                                        Quitar
-                                    </button>
-                                </li>
-                            ))}
-                        </ul>
-                    )}
-                    <div className="sales-total">
-                        <span>Total</span>
-                        <strong>${total.toFixed(2)}</strong>
+                    <div className="page-heading">
+                        <h2>Ventas recientes</h2>
+                        <button className="secondary-button" type="button" onClick={cargarVentas} disabled={cargandoVentas}>Actualizar</button>
                     </div>
-                    <div className="form-grid sales-options">
-                        <label className="form-field">
-                            Documento
-                            <select value={tipoDocumento} onChange={(event) => setTipoDocumento(event.target.value)}>
-                                <option value="Factura">Factura</option>
-                                <option value="CCF">Crédito fiscal</option>
-                            </select>
-                        </label>
-                        <label className="form-field">
-                            Método de pago
-                            <select value={metodoPago} onChange={(event) => setMetodoPago(event.target.value)}>
-                                <option>Efectivo</option>
-                                <option>Tarjeta</option>
-                                <option>Transferencia</option>
-                            </select>
-                        </label>
-                        <label className="form-field sales-pending-option">
-                            <span>Pago</span>
-                            <span><input type="checkbox" checked={pagoPendiente} onChange={(event) => setPagoPendiente(event.target.checked)} /> Registrar como pedido pendiente de pago</span>
-                        </label>
-                    </div>
-                    <div className="sales-submit">
-                        <button className="primary-button" type="submit" disabled={procesando || carrito.length === 0}>
-                            {procesando ? 'Registrando…' : 'Registrar venta'}
-                        </button>
-                    </div>
-                </section>
-            </form>}
-
-            {puedeVerListado && (
-                <section className="surface-card">
-                    <h2>{puedeVerVentas ? 'Ventas recientes' : 'Pedidos de cocina'}</h2>
-                    {cargandoVentas ? <p className="loading-state">Cargando ventas…</p> :
-                        ventas.length === 0 ? <p className="empty-state">No hay ventas o pedidos para mostrar.</p> : (
-                            <div className="data-table-wrap">
+                    {cargandoVentas ? <p className="loading-state" role="status">Cargando ventas…</p> :
+                        errorVentas ? <div className="notice is-error" role="alert">No se pudieron cargar las ventas: {errorVentas}</div> :
+                        ventas.length === 0 ? <p className="empty-state">No hay ventas registradas.</p> : (
+                            <div className="data-table-wrap" tabIndex={0}>
                                 <table className="data-table">
-                                    <thead><tr><th>Fecha</th><th>Correlativo</th><th>Atendió</th><th>Detalle</th><th>Total</th><th>Estado</th>{puedeGestionarPedidos && <th>Acciones</th>}</tr></thead>
+                                    <thead><tr><th>Fecha</th><th>Venta</th><th>Documento</th><th>Sucursal</th><th>Atendió</th><th>Líneas</th><th>Total</th></tr></thead>
                                     <tbody>
-                                        {ventas.map((venta) => (
-                                            <tr key={venta.id_venta}>
-                                                <td>{venta.fecha_hora ? new Intl.DateTimeFormat('es-SV', { dateStyle: 'short', timeStyle: 'short' }).format(new Date(venta.fecha_hora)) : '—'}</td>
-                                                <td>{venta.correlativo}</td>
-                                                <td>{venta.usuarios?.nombre_completo || '—'}</td>
-                                                <td>{venta.venta_detalle.map((linea) => `${linea.productos.nombre} × ${linea.cantidad}`).join(', ')}</td>
-                                                <td>${Number(venta.total).toFixed(2)}</td>
-                                                <td><span className="status-pill">{venta.estado_pedido}</span></td>
-                                                {puedeGestionarPedidos && <td><div className="page-actions">
-                                                    {venta.estado_pedido === 'abierto' && <button className="secondary-button" type="button" onClick={() => actualizarEstado(venta, 'en_cocina')}>Enviar a cocina</button>}
-                                                    {venta.estado_pedido === 'en_cocina' && <button className="secondary-button" type="button" onClick={() => actualizarEstado(venta, 'servido')}>Marcar servido</button>}
-                                                    {['abierto', 'en_cocina'].includes(venta.estado_pedido) && <button className="danger-button" type="button" onClick={() => actualizarEstado(venta, 'cancelado')}>Cancelar</button>}
-                                                </div></td>}
-                                            </tr>
-                                        ))}
+                                        {ventas.map((venta) => {
+                                            const documento = venta.documentos?.[0];
+                                            return (
+                                                <tr key={venta.id}>
+                                                    <td>{fechaHora(venta.fecha)}</td>
+                                                    <td>#{venta.id}</td>
+                                                    <td>{documento ? `${tiposDocumento[documento.tipoDocumento] || documento.tipoDocumento} ${documento.correlativo ?? ''}` : '—'}</td>
+                                                    <td>{venta.sucursal?.nombre || '—'}</td>
+                                                    <td>{venta.usuario?.nombreCompleto || '—'}</td>
+                                                    <td>{venta._count?.detalles ?? '—'}</td>
+                                                    <td>${Number(venta.total).toFixed(2)}</td>
+                                                </tr>
+                                            );
+                                        })}
                                     </tbody>
                                 </table>
                             </div>
