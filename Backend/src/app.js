@@ -1,5 +1,6 @@
 import express from 'express';
 import cors from 'cors';
+import helmet from 'helmet';
 import prisma from './config/prisma.js';
 import rutasAutenticacion from './rutas/autenticacionRutas.js';
 import rutasProductos from './rutas/productosRutas.js';
@@ -18,10 +19,16 @@ import rutasReportes from './rutas/reportesRutas.js';
 import { rutasMesas, rutasReservas } from './rutas/reservasRutas.js';
 import { autenticar } from './middleware/autenticacion.js';
 import { rutaNoEncontrada, manejarErrores } from './middleware/manejoErrores.js';
+import { cambiarPassword } from './controladores/autenticacionControlador.js';
 
 const app = express();
-app.use(cors());
-app.use(express.json());
+
+app.use(helmet());
+// Orígenes permitidos separados por coma. Si el frontend usa otro puerto, cámbialo en .env.
+const origenes = (process.env.CORS_ORIGIN ?? 'http://localhost:5173')
+    .split(',').map((origen) => origen.trim()).filter(Boolean);
+app.use(cors({ origin: origenes }));
+app.use(express.json({ limit: '100kb' }));
 // Los id de movimientos son BigInt y JSON no los admite: se envían como texto.
 app.set('json replacer', (_clave, valor) => (typeof valor === 'bigint' ? valor.toString() : valor));
 
@@ -36,6 +43,7 @@ app.get('/api/health', async (_peticion, respuesta) => {
 });
 
 app.use('/api/auth', rutasAutenticacion);
+app.post('/api/cambiar-password', autenticar, cambiarPassword);
 app.use('/api/productos', autenticar, rutasProductos);
 app.use('/api/sucursales', autenticar, rutasSucursales);
 app.use('/api/ventas', autenticar, rutasVentas);

@@ -2,8 +2,8 @@ import 'dotenv/config';
 import app from './app.js';
 import prisma from './config/prisma.js';
 
-if (!process.env.JWT_SECRET) {
-    throw new Error('Falta JWT_SECRET en Backend/.env');
+if (!process.env.JWT_SECRET || process.env.JWT_SECRET.length < 32) {
+    throw new Error('JWT_SECRET debe tener al menos 32 caracteres en Backend/.env');
 }
 
 const puerto = Number(process.env.PORT ?? 3000);
