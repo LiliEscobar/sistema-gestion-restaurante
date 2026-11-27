@@ -33,17 +33,6 @@ app.get('/api/salud', async (_peticion, respuesta) => {
 });
 
 app.use('/api/auth', rutasAutenticacion);
-
-// Todo lo siguiente exige sesión; cada enrutador define además qué roles acceden.
-app.get('/api/health', async (_peticion, respuesta) => {
-    try {
-        await prisma.$queryRaw`SELECT 1 AS disponible`;
-        return respuesta.json({ estado: 'ok', baseDatos: 'conectada' });
-    } catch (error) {
-        console.error('Fallo la consulta de salud a la base de datos:', error);
-        return respuesta.status(503).json({ estado: 'error', baseDatos: 'no disponible' });
-    }
-});
 app.use('/api/productos', autenticar, rutasProductos);
 app.use('/api/sucursales', autenticar, rutasSucursales);
 app.use('/api/ventas', autenticar, rutasVentas);
