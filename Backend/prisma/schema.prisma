@@ -1,0 +1,40 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlserver"
+}
+
+model Sucursal {
+  id       Int       @id @default(autoincrement())
+  nombre   String    @unique @db.VarChar(100)
+  activo   Boolean   @default(true)
+  usuarios Usuario[]
+
+  @@map("sucursales")
+}
+
+model Rol {
+  id       Int       @id @default(autoincrement())
+  codigo   String    @unique @db.VarChar(30)
+  nombre   String    @db.VarChar(80)
+  usuarios Usuario[]
+
+  @@map("roles")
+}
+
+model Usuario {
+  id             Int       @id @default(autoincrement())
+  nombreCompleto String    @map("nombre_completo") @db.VarChar(150)
+  correo         String    @unique @db.VarChar(150)
+  passwordHash   String    @map("password_hash") @db.VarChar(100)
+  activo         Boolean   @default(true)
+  rolId          Int       @map("rol_id")
+  sucursalId     Int?      @map("sucursal_id")
+  creadoEn       DateTime  @default(now()) @map("creado_en")
+  rol            Rol       @relation(fields: [rolId], references: [id])
+  sucursal       Sucursal? @relation(fields: [sucursalId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@map("usuarios")
+}
