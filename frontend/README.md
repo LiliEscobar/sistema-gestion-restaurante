@@ -22,3 +22,11 @@ El menú y las acciones se derivan de los permisos entregados por `/api/session`
 - Empleados, planillas, usuarios, administración de roles/sucursales, reportes y perfil.
 
 Las pantallas consultan la API real, muestran errores y estados vacíos, y no sustituyen los datos por registros ficticios.
+
+## Fotografías del menú
+
+El mapeo de fotos e ilustraciones por código de producto está en `src/fotosProductos.js`. Los catálogos de Ventas y Productos muestran fotos de los códigos asociados e ilustraciones locales para los demás. La imagen de Inicio se usa como ambientación.
+
+Queda pendiente conseguir fotos sin marca de agua para reemplazar `pan-ajo-horizontal.png`, `limonada.png` y `carne-con-papas.png`. Esos archivos no se incluyeron.
+
+Desde `frontend`, ejecuta `npm test` para verificar el catálogo, las fotos y las ilustraciones sin conectarte a la API.

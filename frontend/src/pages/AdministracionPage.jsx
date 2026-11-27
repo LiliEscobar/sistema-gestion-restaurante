@@ -102,13 +102,13 @@ function AdministracionPage({ permisos = [] }) {
                 </div>
             </form>
 
-            {cargando ? <p className="loading-state">Cargando administración…</p> :
+            {cargando ? <p className="loading-state" role="status">Cargando administración…</p> :
                 errorCarga ? <div className="notice is-error" role="alert">No se pudo cargar la administración: {errorCarga}</div> : (
                 <>
                     <section className="surface-card">
                         <h2>Sucursales</h2>
                         {sucursales.length === 0 ? <p className="empty-state">No hay sucursales registradas.</p> : (
-                            <div className="data-table-wrap">
+                            <div className="data-table-wrap" tabIndex={0}>
                                 <table className="data-table">
                                     <thead><tr><th>ID</th><th>Nombre</th><th>Estado</th><th>Acciones</th></tr></thead>
                                     <tbody>{sucursales.map((sucursal) => (
@@ -130,7 +130,7 @@ function AdministracionPage({ permisos = [] }) {
                     <section className="surface-card">
                         <h2>Roles</h2>
                         <p className="form-help">Los permisos de cada rol están definidos en el servidor. Asigna el rol de cada cuenta en Usuarios.</p>
-                        <div className="data-table-wrap">
+                        <div className="data-table-wrap" tabIndex={0}>
                             <table className="data-table">
                                 <thead><tr><th>Código</th><th>Rol</th><th>Alcance</th></tr></thead>
                                 <tbody>{roles.map((rol) => (

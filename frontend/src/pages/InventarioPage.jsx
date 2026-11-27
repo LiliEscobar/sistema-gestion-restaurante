@@ -183,7 +183,7 @@ function InventarioPage({ permisos = [], usuario }) {
             {!puedeVer ? (
                 <div className="notice is-info">Tu cuenta no tiene acceso a la consulta de inventario.</div>
             ) : cargando ? (
-                <p className="loading-state">Cargando inventario…</p>
+                <p className="loading-state" role="status">Cargando inventario…</p>
             ) : errorCarga ? (
                 <div className="notice is-error" role="alert">No se pudo cargar el inventario: {errorCarga}</div>
             ) : (
@@ -196,7 +196,7 @@ function InventarioPage({ permisos = [], usuario }) {
                     <section className="surface-card">
                         <h2>Alertas de stock</h2>
                         {alertas.length === 0 ? <p className="empty-state">No hay insumos en o bajo el mínimo.</p> : (
-                            <div className="data-table-wrap">
+                            <div className="data-table-wrap" tabIndex={0}>
                                 <table className="data-table">
                                     <thead><tr><th>Sucursal</th><th>Insumo</th><th>Stock actual</th><th>Mínimo</th><th>Estado</th></tr></thead>
                                     <tbody>{alertas.map((alerta) => (
@@ -212,7 +212,7 @@ function InventarioPage({ permisos = [], usuario }) {
                     <section className="surface-card">
                         <h2>Existencias</h2>
                         {existencias.length === 0 ? <p className="empty-state">No hay existencias de insumos activos.</p> : (
-                            <div className="data-table-wrap">
+                            <div className="data-table-wrap" tabIndex={0}>
                                 <table className="data-table">
                                     <thead><tr><th>Sucursal</th><th>Código</th><th>Insumo</th><th>Stock actual</th><th>Stock mínimo</th><th>Estado</th></tr></thead>
                                     <tbody>{existencias.map((fila) => (
@@ -229,7 +229,7 @@ function InventarioPage({ permisos = [], usuario }) {
                     <section className="surface-card">
                         <h2>Movimientos recientes</h2>
                         {movimientos.length === 0 ? <p className="empty-state">No hay movimientos registrados.</p> : (
-                            <div className="data-table-wrap">
+                            <div className="data-table-wrap" tabIndex={0}>
                                 <table className="data-table">
                                     <thead><tr><th>Fecha</th><th>Insumo</th><th>Tipo</th><th>Cambio</th><th>Motivo</th></tr></thead>
                                     <tbody>{movimientos.map((movimiento) => (

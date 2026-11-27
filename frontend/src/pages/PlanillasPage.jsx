@@ -162,7 +162,7 @@ function PlanillasPage({ permisos = [] }) {
                         <button className="secondary-button" type="button" onClick={() => setDetalle(null)}>Cerrar</button>
                     </div>
                     {detalle.detalles.length === 0 ? <p className="empty-state">La planilla no tiene boletas.</p> : (
-                        <div className="data-table-wrap">
+                        <div className="data-table-wrap" tabIndex={0}>
                             <table className="data-table">
                                 <thead><tr><th>Empleado</th><th>Cargo</th><th>Sucursal</th><th>Salario quincena</th><th>ISSS</th><th>AFP</th><th>Renta</th><th>Neto</th></tr></thead>
                                 <tbody>{detalle.detalles.map((fila) => (
@@ -182,10 +182,10 @@ function PlanillasPage({ permisos = [] }) {
             ) : (
                 <section className="surface-card" style={{ marginTop: 16 }}>
                     <h2>Períodos registrados</h2>
-                    {cargando ? <p className="loading-state">Cargando planillas…</p> :
+                    {cargando ? <p className="loading-state" role="status">Cargando planillas…</p> :
                         errorCarga ? <div className="notice is-error" role="alert">No se pudieron cargar las planillas: {errorCarga}</div> :
                         planillas.length === 0 ? <p className="empty-state">Todavía no hay planillas registradas.</p> : (
-                        <div className="data-table-wrap">
+                        <div className="data-table-wrap" tabIndex={0}>
                             <table className="data-table">
                                 <thead>
                                     <tr><th>Período</th><th>Empleados</th><th>Salarios</th><th>ISSS</th><th>AFP</th><th>Renta</th><th>Total neto</th><th>Acciones</th></tr>

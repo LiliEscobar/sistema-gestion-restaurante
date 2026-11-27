@@ -142,7 +142,7 @@ function ComprasPage({ permisos = [], usuario }) {
                 </label>
             )}
 
-            {cargando ? <p className="loading-state">Cargando compras…</p> :
+            {cargando ? <p className="loading-state" role="status">Cargando compras…</p> :
                 errorCarga ? <div className="notice is-error" role="alert">No se pudieron cargar los datos de compras: {errorCarga}</div> : (
                 <>
                     {puedeRegistrar && (
@@ -205,7 +205,7 @@ function ComprasPage({ permisos = [], usuario }) {
                         <section className="surface-card">
                             <h2>Facturas recientes</h2>
                             {compras.length === 0 ? <p className="empty-state">No hay compras registradas.</p> : (
-                                <div className="data-table-wrap">
+                                <div className="data-table-wrap" tabIndex={0}>
                                     <table className="data-table">
                                         <thead><tr><th>Factura</th><th>Proveedor</th><th>Sucursal</th><th>Fecha</th><th>Total</th><th>Pagado</th><th>Saldo</th></tr></thead>
                                         <tbody>
@@ -231,7 +231,7 @@ function ComprasPage({ permisos = [], usuario }) {
                         <section className="surface-card">
                             <h2>Proveedores</h2>
                             {proveedores.length === 0 ? <p className="empty-state">No hay proveedores registrados.</p> : (
-                                <div className="data-table-wrap">
+                                <div className="data-table-wrap" tabIndex={0}>
                                     <table className="data-table">
                                         <thead><tr><th>Código</th><th>Nombre</th><th>Estado</th></tr></thead>
                                         <tbody>{proveedores.map((proveedor) => (

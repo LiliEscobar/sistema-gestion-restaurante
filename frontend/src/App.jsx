@@ -1,5 +1,7 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import './workspace.css';
+import './workspace-interior.css';
+import './workspace-oscuro.css';
 import Login from '../components/login.jsx';
 import SideNavbar from '../components/side-navbar.jsx';
 import { borrarSesion, leerSesion, guardarSesion, solicitudApi } from './api.js';
@@ -39,6 +41,8 @@ function App() {
     const [sesion, setSesion] = useState(leerSesion);
     const [pagina, setPagina] = useState('inicio');
     const [menuAbierto, setMenuAbierto] = useState(false);
+    const menuBotonRef = useRef(null);
+    const contenidoRef = useRef(null);
     const [validandoSesion, setValidandoSesion] = useState(Boolean(leerSesion()?.token));
     const [errorSesion, setErrorSesion] = useState('');
     const [intentoValidacion, setIntentoValidacion] = useState(0);
@@ -87,6 +91,16 @@ function App() {
     }, [sesion?.token, intentoValidacion]);
 
     const paginaActual = items.some((item) => item.id === pagina) ? pagina : 'inicio';
+
+    function cerrarMenu() {
+        setMenuAbierto(false);
+        if (menuAbierto) menuBotonRef.current?.focus();
+    }
+
+    function abrirDesdeInicio(id) {
+        setPagina(id);
+        contenidoRef.current?.focus();
+    }
 
     // El backend usa JWT sin estado y no expone /logout: cerrar sesión es descartar el token local.
     function cerrar() {
@@ -163,7 +177,7 @@ function App() {
             case 'compras':
                 return <ComprasPage permisos={permisos} usuario={sesion.usuario} />;
             case 'productos':
-                return <ProductosPage permisos={permisos} />;
+                return <ProductosPage permisos={permisos} usuario={sesion.usuario} />;
             case 'empleados':
                 return <EmpleadosPage permisos={permisos} usuario={sesion.usuario} />;
             case 'planillas':
@@ -181,6 +195,7 @@ function App() {
                     <InicioPage
                         usuario={sesion.usuario}
                         modulosDisponibles={items.filter((item) => item.id !== 'inicio')}
+                        abrirModulo={abrirDesdeInicio}
                     />
                 );
         }
@@ -193,14 +208,16 @@ function App() {
                 selected={paginaActual}
                 onSelect={setPagina}
                 abierta={menuAbierto}
-                onClose={() => setMenuAbierto(false)}
+                onClose={cerrarMenu}
             />
             <main className="workspace-main">
-                <header className="workspace-topbar">
+                <header className="workspace-topbar" data-pagina={paginaActual}>
                     <div className="workspace-topbar-start">
                         <button
                             className="workspace-menu-toggle"
                             type="button"
+                            ref={menuBotonRef}
+                            aria-controls="workspace-sidebar"
                             aria-expanded={menuAbierto}
                             aria-label="Abrir menú de navegación"
                             onClick={() => setMenuAbierto(true)}
@@ -208,7 +225,7 @@ function App() {
                             Menú
                         </button>
                         <div>
-                            <h1 className="workspace-page-title">{titulos[paginaActual] || 'Inicio'}</h1>
+                            <p className="workspace-page-title">{titulos[paginaActual] || 'Inicio'}</p>
                             <p className="workspace-page-subtitle">Sistema de gestión · Orígenes SV</p>
                         </div>
                     </div>
@@ -222,7 +239,7 @@ function App() {
                         <button className="workspace-logout" type="button" onClick={cerrar}>Cerrar sesión</button>
                     </div>
                 </header>
-                <div className="workspace-content">{contenido()}</div>
+                <div className="workspace-content" ref={contenidoRef} tabIndex={-1}>{contenido()}</div>
             </main>
         </div>
     );
