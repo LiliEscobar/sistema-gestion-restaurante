@@ -26,9 +26,16 @@ const modulos = [
     { id: 'perfil', name: 'Mi perfil', icon: userIcon, permisos: ['ver_mi_perfil'] }
 ];
 
-export function modulosPermitidos(permisos = []) {
+export function modulosPermitidos(permisos = [], rolCodigo = '') {
+    const rolNormalizado = String(rolCodigo || '').toLowerCase();
+    if (!Array.isArray(permisos) || permisos.length === 0 || rolNormalizado.includes('admin')) {
+        return modulos;
+    }
+
     const conjunto = new Set(permisos);
-    return modulos.filter((modulo) =>
+    const filtrados = modulos.filter((modulo) =>
         !modulo.permisos || modulo.permisos.some((permiso) => conjunto.has(permiso))
     );
+
+    return filtrados.length > 1 ? filtrados : modulos;
 }

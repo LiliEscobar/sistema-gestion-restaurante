@@ -7,10 +7,15 @@ datasource db {
 }
 
 model Sucursal {
-  id       Int       @id @default(autoincrement())
-  nombre   String    @unique @db.VarChar(100)
-  activo   Boolean   @default(true)
-  usuarios Usuario[]
+  id          Int                  @id @default(autoincrement())
+  nombre      String               @unique @db.VarChar(100)
+  activo      Boolean              @default(true)
+  usuarios    Usuario[]
+  existencias ExistenciaSucursal[]
+  compras     Compra[]
+  ventas      Venta[]
+  turnosCaja  TurnoCaja[]
+  empleados   Empleado[]
 
   @@map("sucursales")
 }
@@ -25,16 +30,338 @@ model Rol {
 }
 
 model Usuario {
-  id             Int       @id @default(autoincrement())
-  nombreCompleto String    @map("nombre_completo") @db.VarChar(150)
-  correo         String    @unique @db.VarChar(150)
-  passwordHash   String    @map("password_hash") @db.VarChar(100)
-  activo         Boolean   @default(true)
-  rolId          Int       @map("rol_id")
-  sucursalId     Int?      @map("sucursal_id")
-  creadoEn       DateTime  @default(now()) @map("creado_en")
-  rol            Rol       @relation(fields: [rolId], references: [id])
-  sucursal       Sucursal? @relation(fields: [sucursalId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  id             Int         @id @default(autoincrement())
+  nombreCompleto String      @map("nombre_completo") @db.VarChar(150)
+  correo         String      @unique @db.VarChar(150)
+  passwordHash   String      @map("password_hash") @db.VarChar(100)
+  activo         Boolean     @default(true)
+  rolId          Int         @map("rol_id")
+  sucursalId     Int?        @map("sucursal_id")
+  creadoEn       DateTime    @default(now()) @map("creado_en")
+  rol            Rol         @relation(fields: [rolId], references: [id])
+  sucursal       Sucursal?   @relation(fields: [sucursalId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  ventas         Venta[]
+  turnosCaja     TurnoCaja[]
+  empleados      Empleado[]
 
   @@map("usuarios")
+}
+
+model Categoria {
+  id        Int        @id @default(autoincrement())
+  nombre    String     @unique @db.NVarChar(100)
+  activo    Boolean    @default(true)
+  productos Producto[]
+
+  @@map("categorias")
+}
+
+model Producto {
+  id              Int            @id @default(autoincrement())
+  codigo          String         @unique @db.NVarChar(30)
+  nombre          String         @db.NVarChar(150)
+  descripcion     String?        @db.NVarChar(500)
+  categoriaId     Int            @map("categoria_id")
+  tipo            String         @db.VarChar(10)
+  /// Precio común a todas las sucursales, con IVA incluido.
+  precioVenta     Decimal        @map("precio_venta") @db.Decimal(12, 2)
+  insumoReventaId Int?           @map("insumo_reventa_id")
+  activo          Boolean        @default(true)
+  categoria       Categoria      @relation(fields: [categoriaId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  insumoReventa   Insumo?        @relation(fields: [insumoReventaId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  recetas         Receta[]
+  detallesVenta   DetalleVenta[]
+
+  @@unique([id, tipo])
+  @@map("productos")
+}
+
+model Insumo {
+  id               Int                  @id @default(autoincrement())
+  codigo           String               @unique @db.NVarChar(30)
+  nombre           String               @db.NVarChar(120)
+  unidadBase       String               @map("unidad_base") @db.VarChar(6)
+  activo           Boolean              @default(true)
+  productosReventa Producto[]
+  recetas          Receta[]
+  existencias      ExistenciaSucursal[]
+  detallesCompra   DetalleCompra[]
+
+  @@map("insumos")
+}
+
+model Receta {
+  productoId   Int      @map("producto_id")
+  /// La restricción SQL y la relación compuesta reservan las recetas para los elaborados.
+  tipoProducto String   @default("elaborado") @map("tipo_producto") @db.VarChar(10)
+  insumoId     Int      @map("insumo_id")
+  cantidad     Decimal  @db.Decimal(18, 3)
+  producto     Producto @relation(fields: [productoId, tipoProducto], references: [id, tipo], onDelete: NoAction, onUpdate: NoAction)
+  insumo       Insumo   @relation(fields: [insumoId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@id([productoId, insumoId])
+  @@map("recetas")
+}
+
+model ExistenciaSucursal {
+  sucursalId     Int                    @map("sucursal_id")
+  insumoId       Int                    @map("insumo_id")
+  cantidadActual Decimal                @default(0) @map("cantidad_actual") @db.Decimal(18, 3)
+  cantidadMinima Decimal                @default(0) @map("cantidad_minima") @db.Decimal(18, 3)
+  sucursal       Sucursal               @relation(fields: [sucursalId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  insumo         Insumo                 @relation(fields: [insumoId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  movimientos    MovimientoInventario[]
+
+  @@id([sucursalId, insumoId])
+  @@map("existencias_sucursal")
+}
+
+model MovimientoInventario {
+  id                  BigInt             @id @default(autoincrement())
+  sucursalId          Int                @map("sucursal_id")
+  insumoId            Int                @map("insumo_id")
+  tipo                String             @db.VarChar(10)
+  /// Entrada positiva, salida negativa y ajuste positivo o negativo.
+  cantidadCambio      Decimal            @map("cantidad_cambio") @db.Decimal(18, 3)
+  motivo              String             @db.NVarChar(150)
+  fecha               DateTime           @default(now())
+  costoUnitarioCompra Decimal?           @map("costo_unitario_compra") @db.Decimal(18, 6)
+  existencia          ExistenciaSucursal @relation(fields: [sucursalId, insumoId], references: [sucursalId, insumoId], onDelete: NoAction, onUpdate: NoAction)
+  detalleCompraId     Int?               @map("detalle_compra_id")
+  detalleCompra       DetalleCompra?     @relation(fields: [detalleCompraId, insumoId], references: [id, insumoId], onDelete: NoAction, onUpdate: NoAction)
+  detalleVentaId      Int?               @map("detalle_venta_id")
+  detalleVenta        DetalleVenta?      @relation(fields: [detalleVentaId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([sucursalId, insumoId, fecha])
+  @@map("movimientos_inventario")
+}
+
+model Proveedor {
+  id      Int      @id @default(autoincrement())
+  codigo  String   @unique @db.NVarChar(30)
+  nombre  String   @db.NVarChar(150)
+  activo  Boolean  @default(true)
+  compras Compra[]
+
+  @@map("proveedores")
+}
+
+model Compra {
+  id            Int             @id @default(autoincrement())
+  proveedorId   Int             @map("proveedor_id")
+  sucursalId    Int             @map("sucursal_id")
+  numeroFactura String          @map("numero_factura") @db.NVarChar(50)
+  fecha         DateTime        @default(now())
+  /// Importe de la compra antes del IVA.
+  subtotal      Decimal         @db.Decimal(12, 2)
+  iva           Decimal         @db.Decimal(12, 2)
+  total         Decimal         @db.Decimal(12, 2)
+  proveedor     Proveedor       @relation(fields: [proveedorId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  sucursal      Sucursal        @relation(fields: [sucursalId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  detalles      DetalleCompra[]
+  pagos         PagoCompra[]
+
+  @@unique([proveedorId, numeroFactura])
+  @@index([sucursalId, fecha])
+  @@map("compras")
+}
+
+model DetalleCompra {
+  id            Int                    @id @default(autoincrement())
+  compraId      Int                    @map("compra_id")
+  insumoId      Int                    @map("insumo_id")
+  cantidad      Decimal                @db.Decimal(18, 3)
+  /// Costo por unidad base del insumo, antes del IVA.
+  costoUnitario Decimal                @map("costo_unitario") @db.Decimal(18, 6)
+  compra        Compra                 @relation(fields: [compraId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  insumo        Insumo                 @relation(fields: [insumoId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  movimientos   MovimientoInventario[]
+
+  @@unique([compraId, insumoId])
+  @@unique([id, insumoId])
+  @@map("detalles_compra")
+}
+
+model PagoCompra {
+  id         Int      @id @default(autoincrement())
+  compraId   Int      @map("compra_id")
+  referencia String   @db.NVarChar(60)
+  metodo     String   @db.NVarChar(30)
+  monto      Decimal  @db.Decimal(12, 2)
+  fecha      DateTime @default(now())
+  compra     Compra   @relation(fields: [compraId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@unique([compraId, referencia])
+  @@map("pagos_compra")
+}
+
+model Venta {
+  id         Int              @id @default(autoincrement())
+  referencia String           @unique @db.NVarChar(50)
+  sucursalId Int              @map("sucursal_id")
+  usuarioId  Int              @map("usuario_id")
+  fecha      DateTime         @default(now())
+  /// Base sin IVA calculada a partir del total con IVA.
+  subtotal   Decimal          @db.Decimal(12, 2)
+  iva        Decimal          @db.Decimal(12, 2)
+  total      Decimal          @db.Decimal(12, 2)
+  sucursal   Sucursal         @relation(fields: [sucursalId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  usuario    Usuario          @relation(fields: [usuarioId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  detalles   DetalleVenta[]
+  cobros     CobroVenta[]
+  documentos DocumentoVenta[]
+
+  @@unique([id, sucursalId])
+  @@index([sucursalId, fecha])
+  @@map("ventas")
+}
+
+model DetalleVenta {
+  id             Int                    @id @default(autoincrement())
+  ventaId        Int                    @map("venta_id")
+  productoId     Int                    @map("producto_id")
+  cantidad       Int
+  /// Precio unitario histórico con IVA incluido.
+  precioUnitario Decimal                @map("precio_unitario") @db.Decimal(12, 2)
+  venta          Venta                  @relation(fields: [ventaId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  producto       Producto               @relation(fields: [productoId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  movimientos    MovimientoInventario[]
+
+  @@unique([ventaId, productoId])
+  @@map("detalles_venta")
+}
+
+model TurnoCaja {
+  id               Int              @id @default(autoincrement())
+  referencia       String           @unique @db.NVarChar(60)
+  sucursalId       Int              @map("sucursal_id")
+  usuarioId        Int              @map("usuario_id")
+  fechaApertura    DateTime         @default(now()) @map("fecha_apertura")
+  fechaCierre      DateTime?        @map("fecha_cierre")
+  fondoInicial     Decimal          @map("fondo_inicial") @db.Decimal(12, 2)
+  efectivoEsperado Decimal?         @map("efectivo_esperado") @db.Decimal(12, 2)
+  efectivoContado  Decimal?         @map("efectivo_contado") @db.Decimal(12, 2)
+  diferencia       Decimal?         @db.Decimal(12, 2)
+  totalTarjeta     Decimal?         @map("total_tarjeta") @db.Decimal(12, 2)
+  totalDigital     Decimal?         @map("total_digital") @db.Decimal(12, 2)
+  totalBitcoin     Decimal?         @map("total_bitcoin") @db.Decimal(12, 2)
+  sucursal         Sucursal         @relation(fields: [sucursalId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  usuario          Usuario          @relation(fields: [usuarioId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  cobros           CobroVenta[]
+  movimientos      MovimientoCaja[]
+
+  @@unique([id, sucursalId])
+  @@index([sucursalId, fechaApertura])
+  @@map("turnos_caja")
+}
+
+model CobroVenta {
+  id                BigInt    @id @default(autoincrement())
+  referencia        String    @unique @db.NVarChar(60)
+  referenciaExterna String?   @map("referencia_externa") @db.NVarChar(60)
+  turnoId           Int       @map("turno_id")
+  ventaId           Int       @map("venta_id")
+  sucursalId        Int       @map("sucursal_id")
+  metodo            String    @db.VarChar(10)
+  monto             Decimal   @db.Decimal(12, 2)
+  fecha             DateTime  @default(now())
+  turno             TurnoCaja @relation(fields: [turnoId, sucursalId], references: [id, sucursalId], onDelete: NoAction, onUpdate: NoAction)
+  venta             Venta     @relation(fields: [ventaId, sucursalId], references: [id, sucursalId], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([turnoId, metodo])
+  @@index([ventaId])
+  @@map("cobros_venta")
+}
+
+model MovimientoCaja {
+  id         BigInt    @id @default(autoincrement())
+  referencia String    @unique @db.NVarChar(60)
+  turnoId    Int       @map("turno_id")
+  tipo       String    @db.VarChar(10)
+  monto      Decimal   @db.Decimal(12, 2)
+  motivo     String    @db.NVarChar(150)
+  fecha      DateTime  @default(now())
+  turno      TurnoCaja @relation(fields: [turnoId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([turnoId, tipo])
+  @@map("movimientos_caja")
+}
+
+model Cliente {
+  id          Int              @id @default(autoincrement())
+  nombre      String           @db.NVarChar(150)
+  razonSocial String?          @map("razon_social") @db.NVarChar(150)
+  nit         String?          @db.NVarChar(25)
+  nrc         String?          @db.NVarChar(25)
+  activo      Boolean          @default(true)
+  documentos  DocumentoVenta[]
+
+  @@map("clientes")
+}
+
+model DocumentoVenta {
+  id            Int      @id @default(autoincrement())
+  ventaId       Int      @unique @map("venta_id")
+  sucursalId    Int      @map("sucursal_id")
+  clienteId     Int?     @map("cliente_id")
+  tipoDocumento String   @map("tipo_documento") @db.VarChar(16)
+  correlativo   Int
+  fecha         DateTime @default(now())
+  /// Datos del cliente al momento de emitir el documento.
+  nombreCliente String?  @map("nombre_cliente") @db.NVarChar(150)
+  razonSocial   String?  @map("razon_social") @db.NVarChar(150)
+  nit           String?  @db.NVarChar(25)
+  nrc           String?  @db.NVarChar(25)
+  subtotal      Decimal  @db.Decimal(12, 2)
+  iva           Decimal  @db.Decimal(12, 2)
+  total         Decimal  @db.Decimal(12, 2)
+  venta         Venta    @relation(fields: [ventaId, sucursalId], references: [id, sucursalId], onDelete: NoAction, onUpdate: NoAction)
+  cliente       Cliente? @relation(fields: [clienteId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@unique([sucursalId, tipoDocumento, correlativo])
+  @@map("documentos_venta")
+}
+
+model Empleado {
+  id             Int               @id @default(autoincrement())
+  codigo         String            @unique @db.VarChar(30)
+  nombreCompleto String            @map("nombre_completo") @db.NVarChar(150)
+  sucursalId     Int               @map("sucursal_id")
+  cargo          String            @db.VarChar(7)
+  usuarioId      Int?              @map("usuario_id")
+  salarioMensual Decimal           @map("salario_mensual") @db.Decimal(12, 2)
+  fechaIngreso   DateTime          @map("fecha_ingreso") @db.Date
+  fechaSalida    DateTime?         @map("fecha_salida") @db.Date
+  activo         Boolean           @default(true)
+  sucursal       Sucursal          @relation(fields: [sucursalId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  usuario        Usuario?          @relation(fields: [usuarioId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  detalles       DetallePlanilla[]
+
+  @@map("empleados")
+}
+
+model Planilla {
+  id            Int               @id @default(autoincrement())
+  periodoInicio DateTime          @map("periodo_inicio") @db.Date
+  periodoFin    DateTime          @map("periodo_fin") @db.Date
+  creadoEn      DateTime          @default(now()) @map("creado_en")
+  detalles      DetallePlanilla[]
+
+  @@unique([periodoInicio, periodoFin])
+  @@map("planillas")
+}
+
+model DetallePlanilla {
+  planillaId     Int      @map("planilla_id")
+  empleadoId     Int      @map("empleado_id")
+  salarioPeriodo Decimal  @map("salario_periodo") @db.Decimal(12, 2)
+  isss           Decimal  @db.Decimal(12, 2)
+  afp            Decimal  @db.Decimal(12, 2)
+  renta          Decimal  @db.Decimal(12, 2)
+  neto           Decimal  @db.Decimal(12, 2)
+  planilla       Planilla @relation(fields: [planillaId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  empleado       Empleado @relation(fields: [empleadoId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@id([planillaId, empleadoId])
+  @@map("detalles_planilla")
 }

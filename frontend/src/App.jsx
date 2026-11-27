@@ -43,9 +43,9 @@ function App() {
     const [errorSesion, setErrorSesion] = useState('');
     const [intentoValidacion, setIntentoValidacion] = useState(0);
     const items = useMemo(
-        () => modulosPermitidos(sesion?.usuario?.permisos),
-        [sesion?.usuario?.permisos]
-    );
+    () => modulosPermitidos(sesion?.usuario?.permisos, sesion?.usuario?.rol?.codigo),
+    [sesion?.usuario?.permisos, sesion?.usuario?.rol?.codigo]
+);
 
     useEffect(() => {
         function expirarSesion() {
@@ -58,15 +58,16 @@ function App() {
     }, []);
 
     useEffect(() => {
-        if (!sesion?.token) {
+        const token = sesion?.token;
+        if (!token) {
             return undefined;
         }
 
         let activo = true;
-        solicitudApi('/session')
-            .then((sesionActual) => {
+        solicitudApi('/auth/sesion')
+            .then(({ usuario }) => {
                 if (!activo) return;
-                guardarSesion(sesionActual);
+                const sesionActual = guardarSesion({ token, usuario });
                 setErrorSesion('');
                 setSesion(sesionActual);
             })
