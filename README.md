@@ -22,6 +22,22 @@
 
    `npm ci` genera Prisma Client. `migrate deploy` crea la estructura y la vista de alertas.
 
+## Actualizar una base propia
+
+Cada integrante debe configurar su propio `Backend/.env` a partir de `.env.example`. Si ya tienes un `.env`, conserva tus valores y completa las variables que falten. Verifica que `DB_HOST`, `DB_PORT` y `DB_NAME` apunten a tu instancia y base antes de ejecutar las migraciones.
+
+Después de actualizar `develop`, si ya tienes una base configurada con las migraciones del proyecto, ejecuta desde la raíz del repositorio:
+
+```powershell
+cd .\Backend
+npm ci
+npx prisma migrate status
+npx prisma migrate deploy
+npx prisma migrate status
+```
+
+`migrate deploy` aplica las migraciones versionadas pendientes, incluida `20261127180000_reservas_mesas` si aún falta. El último `migrate status` comprueba que el historial esté al día. Si el primer `migrate status` muestra una migración fallida o un historial divergente, resuelve ese estado antes de continuar.
+
 ## Cargar datos de demostración
 
 Antes de la primera carga, define `DEMO_ADMIN_PASSWORD` con una contraseña exclusiva para la cuenta demo `admin@origenes.sv`. Define también las nueve variables `DEMO_<ROL>_<SUCURSAL>_PASSWORD` de `.env.example`. Las cuentas usan el formato `rol.sucursal@origenes.sv`, por ejemplo `gerente.central@origenes.sv` y `barista.santa.elena@origenes.sv`. Usa una base de demostración. Confirma el host, puerto y nombre que configuraste en `.env`; el siguiente ejemplo usa `localhost:1433/origenesv_demo`.
@@ -34,4 +50,20 @@ El comando ejecuta el seed, las sucursales, sus nueve usuarios y empleados demo,
 
 Para ejecutar un paso individual, pasa la misma confirmación a `npm run seed --` o al script, por ejemplo `node prisma/cargarEntradas.js "--confirmar-demo=localhost:1433/origenesv_demo"`.
 
-Arranca la API con `npm run dev` desde `Backend`. Con el puerto predeterminado, puedes comprobarla en `http://localhost:3000/api/salud`.
+Arranca la API con `npm run dev` desde `Backend`. Con el puerto predeterminado, puedes comprobarla en `http://localhost:3000/api/health`.
+
+## Ejecutar el frontend
+
+Con la API en ejecución en el puerto `3000`, abre otra terminal en la raíz y ejecuta:
+
+```powershell
+cd .\frontend
+npm ci
+npm run dev
+```
+
+Abre la URL que muestra Vite. `npm run build` genera la compilación de producción.
+
+## Reproducir las pruebas
+
+Desde `Backend`, ejecuta `npm test` después de `npm ci`. La suite automatizada usa datos simulados y no comprueba una conexión a SQL Server ni la aplicación de migraciones.
