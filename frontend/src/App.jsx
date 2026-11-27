@@ -43,9 +43,9 @@ function App() {
     const [errorSesion, setErrorSesion] = useState('');
     const [intentoValidacion, setIntentoValidacion] = useState(0);
     const items = useMemo(
-        () => modulosPermitidos(sesion?.usuario?.permisos),
-        [sesion?.usuario?.permisos]
-    );
+    () => modulosPermitidos(sesion?.usuario?.permisos, sesion?.usuario?.rol?.codigo),
+    [sesion?.usuario?.permisos, sesion?.usuario?.rol?.codigo]
+);
 
     useEffect(() => {
         function expirarSesion() {

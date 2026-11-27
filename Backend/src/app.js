@@ -33,8 +33,6 @@ app.get('/api/salud', async (_peticion, respuesta) => {
 });
 
 app.use('/api/auth', rutasAutenticacion);
-
-// Todo lo siguiente exige sesión; cada enrutador define además qué roles acceden.
 app.use('/api/productos', autenticar, rutasProductos);
 app.use('/api/sucursales', autenticar, rutasSucursales);
 app.use('/api/ventas', autenticar, rutasVentas);
