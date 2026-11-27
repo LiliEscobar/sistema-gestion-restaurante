@@ -3,19 +3,19 @@ import './workspace.css';
 import Login from '../components/login.jsx';
 import SideNavbar from '../components/side-navbar.jsx';
 import { borrarSesion, leerSesion, guardarSesion, solicitudApi } from './api.js';
+import ReservasPage from './pages/ReservasPage.jsx';
 import { modulosPermitidos } from './navigation.js';
 import InicioPage from './pages/InicioPage.jsx';
 import VentasPage from './pages/VentasPage.jsx';
 import InventarioPage from './pages/InventarioPage.jsx';
 import PlanillasPage from './pages/PlanillasPage.jsx';
 import EmpleadosPage from './pages/EmpleadosPage.jsx';
-import ReservasPage from './pages/ReservasPage.jsx';
 import CajaPage from './pages/CajaPage.jsx';
 import CambiarPasswordPage from './pages/CambiarPasswordPage.jsx';
 import ComprasPage from './pages/ComprasPage.jsx';
 import ProductosPage from './pages/ProductosPage.jsx';
-import UsuariosPage from './pages/UsuariosPage.jsx';
 import AdministracionPage from './pages/AdministracionPage.jsx';
+import UsuariosPage from './pages/UsuariosPage.jsx';
 import ReportesPage from './pages/ReportesPage.jsx';
 import PerfilPage from './pages/PerfilPage.jsx';
 
@@ -43,8 +43,8 @@ function App() {
     const [errorSesion, setErrorSesion] = useState('');
     const [intentoValidacion, setIntentoValidacion] = useState(0);
     const items = useMemo(
-    () => modulosPermitidos(sesion?.usuario?.permisos, sesion?.usuario?.rol?.codigo),
-    [sesion?.usuario?.permisos, sesion?.usuario?.rol?.codigo]
+    () => modulosPermitidos(sesion?.usuario?.permisos, sesion?.usuario?.rol),
+    [sesion?.usuario?.permisos, sesion?.usuario?.rol]
 );
 
     useEffect(() => {
@@ -88,16 +88,11 @@ function App() {
 
     const paginaActual = items.some((item) => item.id === pagina) ? pagina : 'inicio';
 
-    async function cerrar() {
-        try {
-            await solicitudApi('/logout', { method: 'POST' });
-        } catch {
-            // La sesión local se elimina incluso si el servidor dejó de estar disponible.
-        } finally {
-            borrarSesion();
-            setSesion(null);
-            setPagina('inicio');
-        }
+    // El backend usa JWT sin estado y no expone /logout: cerrar sesión es descartar el token local.
+    function cerrar() {
+        borrarSesion();
+        setSesion(null);
+        setPagina('inicio');
     }
 
     function actualizarSesion(actualizada) {
@@ -158,7 +153,7 @@ function App() {
         const permisos = sesion.usuario.permisos;
         switch (paginaActual) {
             case 'ventas':
-                return <VentasPage permisos={permisos} />;
+                return <VentasPage permisos={permisos} usuario={sesion.usuario} />;
             case 'reservas':
                 return <ReservasPage permisos={permisos} usuario={sesion.usuario} />;
             case 'caja':
@@ -178,7 +173,7 @@ function App() {
             case 'administracion':
                 return <AdministracionPage permisos={permisos} />;
             case 'reportes':
-                return <ReportesPage />;
+                return <ReportesPage usuario={sesion.usuario} />;
             case 'perfil':
                 return <PerfilPage />;
             default:
