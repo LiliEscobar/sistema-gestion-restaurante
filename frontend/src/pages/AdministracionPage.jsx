@@ -1,289 +1,144 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { solicitudApi } from '../api.js';
 
+// Alcance de cada rol según las rutas del backend (requerirRol). Los roles son fijos: crear uno nuevo
+// no le daría acceso a nada sin cambiar el código del servidor, por eso aquí solo se consultan.
+const alcances = {
+    admin: 'Todo el sistema y todas las sucursales; único que gestiona usuarios, sucursales y menú.',
+    gerente: 'Ventas, caja, inventario, compras, empleados, planillas y reportes de su sucursal.',
+    cajero: 'Ventas, caja (su propio turno) y consulta de menú e inventario de su sucursal.',
+    barista: 'Consulta de menú e inventario de su sucursal.'
+};
+
+// Contrato: Backend/src/controladores/sucursalesControlador.js (escritura solo administrador)
+// y GET /api/usuarios/roles. La baja de una sucursal es activo = false; no se borran.
 function AdministracionPage({ permisos = [] }) {
-    const puedeRoles = permisos.includes('gestionar_roles_permisos');
-    const puedeSucursales = permisos.includes('gestionar_sucursales');
-    const [roles, setRoles] = useState([]);
-    const [permisosDisponibles, setPermisosDisponibles] = useState([]);
-    const [niveles, setNiveles] = useState([]);
+    const puedeVer = permisos.includes('gestionar_sucursales');
     const [sucursales, setSucursales] = useState([]);
-    const [rolSeleccionado, setRolSeleccionado] = useState('');
-    const [permisosRol, setPermisosRol] = useState([]);
-    const [nuevoRol, setNuevoRol] = useState({ nombre_rol: '', descripcion: '', id_nivel: '' });
-    const [nuevaSucursal, setNuevaSucursal] = useState({ nombre: '', direccion: '', telefono: '' });
-    const [sucursalEditada, setSucursalEditada] = useState(null);
-    const [cargando, setCargando] = useState(true);
+    const [roles, setRoles] = useState([]);
+    const [nombre, setNombre] = useState('');
+    const [cargando, setCargando] = useState(puedeVer);
+    const [errorCarga, setErrorCarga] = useState('');
     const [procesando, setProcesando] = useState(false);
     const [error, setError] = useState('');
     const [mensaje, setMensaje] = useState('');
+    const [recarga, setRecarga] = useState(0);
 
-    async function cargar() {
+    const cargar = useCallback(() => {
         setCargando(true);
-        setError('');
-        try {
-            const solicitudes = [];
-            if (puedeRoles) {
-                solicitudes.push(Promise.all([
-                    solicitudApi('/administracion/roles'),
-                    solicitudApi('/administracion/permisos'),
-                    solicitudApi('/administracion/niveles')
-                ]));
-            }
-            if (puedeSucursales) solicitudes.push(solicitudApi('/administracion/sucursales'));
-            const respuestas = await Promise.all(solicitudes);
-            let indice = 0;
-            if (puedeRoles) {
-                const [listaRoles, listaPermisos, listaNiveles] = respuestas[indice++];
-                setRoles(listaRoles);
-                setPermisosDisponibles(listaPermisos.permisos);
-                setNiveles(listaNiveles.niveles);
-                const rolActual = listaRoles.find((rol) => String(rol.id_rol) === rolSeleccionado) ||
-                    listaRoles[0];
-                setRolSeleccionado(String(rolActual?.id_rol || ''));
-                setPermisosRol(rolActual?.permisos || []);
-            }
-            if (puedeSucursales) setSucursales(respuestas[indice].sucursales);
-        } catch (fallo) {
-            setError(fallo.message);
-        } finally {
-            setCargando(false);
-        }
-    }
+        setErrorCarga('');
+        setRecarga((actual) => actual + 1);
+    }, []);
 
     useEffect(() => {
+        if (!puedeVer) return undefined;
         let activo = true;
-        const solicitudes = [];
-        if (puedeRoles) {
-            solicitudes.push(Promise.all([
-                solicitudApi('/administracion/roles'),
-                solicitudApi('/administracion/permisos'),
-                solicitudApi('/administracion/niveles')
-            ]));
-        }
-        if (puedeSucursales) solicitudes.push(solicitudApi('/administracion/sucursales'));
-        Promise.all(solicitudes).then((respuestas) => {
-            if (!activo) return;
-            let indice = 0;
-            if (puedeRoles) {
-                const [listaRoles, listaPermisos, listaNiveles] = respuestas[indice++];
-                setRoles(listaRoles);
-                setPermisosDisponibles(listaPermisos.permisos);
-                setNiveles(listaNiveles.niveles);
-                setRolSeleccionado(String(listaRoles[0]?.id_rol || ''));
-                setPermisosRol(listaRoles[0]?.permisos || []);
-            }
-            if (puedeSucursales) setSucursales(respuestas[indice].sucursales);
-        }).catch((fallo) => {
-            if (activo) setError(fallo.message);
-        }).finally(() => {
-            if (activo) setCargando(false);
-        });
+        Promise.all([solicitudApi('/sucursales?todas=true'), solicitudApi('/usuarios/roles')])
+            .then(([respuestaSucursales, respuestaRoles]) => {
+                if (!activo) return;
+                setSucursales(respuestaSucursales.sucursales);
+                setRoles(respuestaRoles.roles);
+            })
+            .catch((fallo) => { if (activo) setErrorCarga(fallo.message); })
+            .finally(() => { if (activo) setCargando(false); });
         return () => { activo = false; };
-    }, [puedeRoles, puedeSucursales]);
+    }, [puedeVer, recarga]);
 
-    const rolActual = roles.find((rol) => String(rol.id_rol) === rolSeleccionado);
-
-    async function crearRol(event) {
-        event.preventDefault();
+    async function operar(path, method, body, textoExito) {
         setProcesando(true);
         setError('');
         setMensaje('');
         try {
-            const respuesta = await solicitudApi('/administracion/roles', {
-                method: 'POST',
-                body: { ...nuevoRol, id_nivel: Number(nuevoRol.id_nivel) }
-            });
-            setMensaje(respuesta.mensaje);
-            setNuevoRol({ nombre_rol: '', descripcion: '', id_nivel: '' });
-            await cargar();
+            await solicitudApi(path, { method, body });
+            setMensaje(textoExito);
+            cargar();
+            return true;
         } catch (fallo) {
             setError(fallo.message);
+            return false;
         } finally {
             setProcesando(false);
         }
     }
 
-    async function guardarPermisos(event) {
+    async function crear(event) {
         event.preventDefault();
-        if (!rolActual || rolActual.nivel === 'administrador') return;
-        setProcesando(true);
-        setError('');
-        try {
-            const respuesta = await solicitudApi(`/administracion/roles/${rolActual.id_rol}/permisos`, {
-                method: 'PUT',
-                body: { permisos: permisosRol }
-            });
-            setMensaje(respuesta.mensaje);
-            window.dispatchEvent(new Event('origen:sesion-expirada'));
-        } catch (fallo) {
-            setError(fallo.message);
-            setProcesando(false);
-        }
+        if (await operar('/sucursales', 'POST', { nombre: nombre.trim() }, `Sucursal ${nombre.trim()} creada con existencias en 0 de cada insumo activo.`)) setNombre('');
     }
 
-    async function crearSucursal(event) {
-        event.preventDefault();
-        setProcesando(true);
-        setError('');
-        setMensaje('');
-        try {
-            const respuesta = await solicitudApi('/administracion/sucursales', {
-                method: 'POST',
-                body: nuevaSucursal
-            });
-            setMensaje(respuesta.mensaje);
-            setNuevaSucursal({ nombre: '', direccion: '', telefono: '' });
-            await cargar();
-        } catch (fallo) {
-            setError(fallo.message);
-        } finally {
-            setProcesando(false);
-        }
+    function renombrar(sucursal) {
+        const nuevo = window.prompt('Nuevo nombre de la sucursal:', sucursal.nombre);
+        if (!nuevo || nuevo.trim() === sucursal.nombre) return;
+        operar(`/sucursales/${sucursal.id}`, 'PATCH', { nombre: nuevo.trim() }, 'Sucursal renombrada.');
     }
 
-    async function actualizarSucursal(event) {
-        event.preventDefault();
-        if (!sucursalEditada) return;
-        setProcesando(true);
-        setError('');
-        setMensaje('');
-        try {
-            const respuesta = await solicitudApi(`/administracion/sucursales/${sucursalEditada.sucursalid}`, {
-                method: 'PATCH',
-                body: {
-                    nombre: sucursalEditada.nombre,
-                    direccion: sucursalEditada.direccion,
-                    telefono: sucursalEditada.telefono || null,
-                    activo: sucursalEditada.activo
-                }
-            });
-            setMensaje(respuesta.mensaje);
-            setSucursalEditada(null);
-            await cargar();
-        } catch (fallo) {
-            setError(fallo.message);
-        } finally {
-            setProcesando(false);
-        }
+    function cambiarEstado(sucursal) {
+        const texto = sucursal.activo
+            ? `¿Desactivar ${sucursal.nombre}? No podrá abrir turnos de caja ni aparecerá en los selectores.`
+            : `¿Reactivar ${sucursal.nombre}?`;
+        if (!window.confirm(texto)) return;
+        operar(`/sucursales/${sucursal.id}`, 'PATCH', { activo: !sucursal.activo }, `Sucursal ${sucursal.activo ? 'desactivada' : 'reactivada'}.`);
     }
+
+    if (!puedeVer) return <div className="notice is-info">Tu cuenta no tiene acceso a la administración.</div>;
 
     return (
         <>
             <header className="page-heading">
                 <div>
                     <h1>Administración</h1>
-                    <p>Configura acceso y sucursales. Cambiar permisos invalida las sesiones activas.</p>
+                    <p>Sucursales y roles del sistema.</p>
                 </div>
                 <button className="secondary-button" type="button" onClick={cargar} disabled={cargando}>Actualizar</button>
             </header>
             {error && <div className="notice is-error" role="alert">{error}</div>}
             {mensaje && <div className="notice" role="status">{mensaje}</div>}
-            {cargando ? <p className="loading-state">Cargando configuración…</p> : (
+
+            <form className="surface-card" onSubmit={crear}>
+                <h2>Nueva sucursal</h2>
+                <div className="inline-form">
+                    <label className="form-field">Nombre<input maxLength="100" required value={nombre} onChange={(event) => setNombre(event.target.value)} /></label>
+                    <button className="primary-button" type="submit" disabled={procesando}>Crear sucursal</button>
+                </div>
+            </form>
+
+            {cargando ? <p className="loading-state">Cargando administración…</p> :
+                errorCarga ? <div className="notice is-error" role="alert">No se pudo cargar la administración: {errorCarga}</div> : (
                 <>
-                    {puedeRoles && (
-                        <>
-                            <form className="surface-card" onSubmit={crearRol}>
-                                <h2>Crear rol</h2>
-                                <div className="form-grid">
-                                    <label className="form-field">Nombre<input maxLength="50" required value={nuevoRol.nombre_rol} onChange={(event) => setNuevoRol({ ...nuevoRol, nombre_rol: event.target.value })} /></label>
-                                    <label className="form-field">Nivel de acceso<select required value={nuevoRol.id_nivel} onChange={(event) => setNuevoRol({ ...nuevoRol, id_nivel: event.target.value })}>
-                                        <option value="">Selecciona un nivel</option>
-                                        {niveles.map((nivel) => <option key={nivel.id_nivel} value={nivel.id_nivel}>{nivel.codigo}</option>)}
-                                    </select></label>
-                                    <label className="form-field form-field is-wide">Descripción<textarea value={nuevoRol.descripcion} onChange={(event) => setNuevoRol({ ...nuevoRol, descripcion: event.target.value })} /></label>
-                                </div>
-                                <button className="primary-button" type="submit" disabled={procesando} style={{ marginTop: 16 }}>Crear rol</button>
-                            </form>
-
-                            <form className="surface-card" onSubmit={guardarPermisos}>
-                                <h2>Permisos del rol</h2>
-                                <label className="form-field">
-                                    Rol
-                                    <select value={rolSeleccionado} onChange={(event) => {
-                                        const id = event.target.value;
-                                        setRolSeleccionado(id);
-                                        setPermisosRol(roles.find((rol) => String(rol.id_rol) === id)?.permisos || []);
-                                    }}>
-                                        {roles.map((rol) => <option key={rol.id_rol} value={rol.id_rol}>{rol.nombre_rol} · {rol.nivel}</option>)}
-                                    </select>
-                                </label>
-                                {rolActual?.nivel === 'administrador' ? (
-                                    <p className="notice is-info" style={{ marginTop: 14 }}>Los permisos del nivel administrador están protegidos y no se pueden modificar.</p>
-                                ) : (
-                                    <>
-                                        <div className="form-grid" style={{ marginTop: 16 }}>
-                                            {permisosDisponibles.map((permiso) => (
-                                                <label className="form-field" key={permiso.id_permiso}>
-                                                    <span><input
-                                                        type="checkbox"
-                                                        checked={permisosRol.includes(permiso.codigo)}
-                                                        onChange={(event) => setPermisosRol((actuales) =>
-                                                            event.target.checked
-                                                                ? [...actuales, permiso.codigo]
-                                                                : actuales.filter((codigo) => codigo !== permiso.codigo)
-                                                        )}
-                                                    /> {permiso.codigo}</span>
-                                                    {permiso.descripcion && <small>{permiso.descripcion}</small>}
-                                                </label>
-                                            ))}
-                                        </div>
-                                        <button className="primary-button" type="submit" disabled={procesando || !rolActual} style={{ marginTop: 16 }}>Guardar permisos</button>
-                                    </>
-                                )}
-                            </form>
-                        </>
-                    )}
-
-                    {puedeSucursales && (
-                        <>
-                            <form className="surface-card" onSubmit={crearSucursal}>
-                                <h2>Registrar sucursal</h2>
-                                <div className="form-grid">
-                                    <label className="form-field">Nombre<input maxLength="100" required value={nuevaSucursal.nombre} onChange={(event) => setNuevaSucursal({ ...nuevaSucursal, nombre: event.target.value })} /></label>
-                                    <label className="form-field">Teléfono<input maxLength="20" value={nuevaSucursal.telefono} onChange={(event) => setNuevaSucursal({ ...nuevaSucursal, telefono: event.target.value })} /></label>
-                                    <label className="form-field is-wide">Dirección<input maxLength="255" required value={nuevaSucursal.direccion} onChange={(event) => setNuevaSucursal({ ...nuevaSucursal, direccion: event.target.value })} /></label>
-                                </div>
-                                <button className="primary-button" type="submit" disabled={procesando} style={{ marginTop: 16 }}>Crear sucursal</button>
-                            </form>
-                            <section className="surface-card">
-                                <h2>Sucursales</h2>
-                                {sucursales.length === 0 ? <p className="empty-state">No hay sucursales registradas.</p> : (
-                                    <div className="data-table-wrap">
-                                        <table className="data-table">
-                                            <thead><tr><th>Nombre</th><th>Dirección</th><th>Teléfono</th><th>Estado</th><th>Acciones</th></tr></thead>
-                                            <tbody>
-                                                {sucursales.map((sucursal) => (
-                                                    <tr key={sucursal.sucursalid}>
-                                                        <td>{sucursal.nombre}</td>
-                                                        <td>{sucursal.direccion}</td>
-                                                        <td>{sucursal.telefono || '—'}</td>
-                                                        <td>{sucursal.activo ? 'Activa' : 'Inactiva'}</td>
-                                                        <td><button className="secondary-button" type="button" onClick={() => setSucursalEditada({ ...sucursal })}>Editar</button></td>
-                                                    </tr>
-                                                ))}
-                                            </tbody>
-                                        </table>
-                                    </div>
-                                )}
-                            </section>
-                            {sucursalEditada && (
-                                <form className="surface-card" onSubmit={actualizarSucursal}>
-                                    <h2>Editar sucursal</h2>
-                                    <div className="form-grid">
-                                        <label className="form-field">Nombre<input maxLength="100" required value={sucursalEditada.nombre} onChange={(event) => setSucursalEditada({ ...sucursalEditada, nombre: event.target.value })} /></label>
-                                        <label className="form-field">Teléfono<input maxLength="20" value={sucursalEditada.telefono || ''} onChange={(event) => setSucursalEditada({ ...sucursalEditada, telefono: event.target.value })} /></label>
-                                        <label className="form-field is-wide">Dirección<input maxLength="255" required value={sucursalEditada.direccion} onChange={(event) => setSucursalEditada({ ...sucursalEditada, direccion: event.target.value })} /></label>
-                                        <label className="form-field"><span><input type="checkbox" checked={sucursalEditada.activo} onChange={(event) => setSucursalEditada({ ...sucursalEditada, activo: event.target.checked })} /> Sucursal activa</span></label>
-                                    </div>
-                                    <div className="page-actions" style={{ marginTop: 16 }}>
-                                        <button className="primary-button" type="submit" disabled={procesando}>Guardar sucursal</button>
-                                        <button className="secondary-button" type="button" onClick={() => setSucursalEditada(null)}>Cancelar</button>
-                                    </div>
-                                </form>
-                            )}
-                        </>
-                    )}
+                    <section className="surface-card">
+                        <h2>Sucursales</h2>
+                        {sucursales.length === 0 ? <p className="empty-state">No hay sucursales registradas.</p> : (
+                            <div className="data-table-wrap">
+                                <table className="data-table">
+                                    <thead><tr><th>ID</th><th>Nombre</th><th>Estado</th><th>Acciones</th></tr></thead>
+                                    <tbody>{sucursales.map((sucursal) => (
+                                        <tr key={sucursal.id}>
+                                            <td>{sucursal.id}</td><td>{sucursal.nombre}</td>
+                                            <td><span className={`status-pill ${sucursal.activo ? '' : 'is-warning'}`}>{sucursal.activo ? 'activa' : 'inactiva'}</span></td>
+                                            <td><div className="page-actions">
+                                                <button className="secondary-button" type="button" onClick={() => renombrar(sucursal)} disabled={procesando}>Renombrar</button>
+                                                <button className={sucursal.activo ? 'danger-button' : 'secondary-button'} type="button" onClick={() => cambiarEstado(sucursal)} disabled={procesando}>
+                                                    {sucursal.activo ? 'Desactivar' : 'Reactivar'}
+                                                </button>
+                                            </div></td>
+                                        </tr>
+                                    ))}</tbody>
+                                </table>
+                            </div>
+                        )}
+                    </section>
+                    <section className="surface-card">
+                        <h2>Roles</h2>
+                        <p className="form-help">Los permisos de cada rol están definidos en el servidor. Asigna el rol de cada cuenta en Usuarios.</p>
+                        <div className="data-table-wrap">
+                            <table className="data-table">
+                                <thead><tr><th>Código</th><th>Rol</th><th>Alcance</th></tr></thead>
+                                <tbody>{roles.map((rol) => (
+                                    <tr key={rol.id}><td>{rol.codigo}</td><td>{rol.nombre}</td><td>{alcances[rol.codigo] || 'Sin permisos asignados en el servidor.'}</td></tr>
+                                ))}</tbody>
+                            </table>
+                        </div>
+                    </section>
                 </>
             )}
         </>

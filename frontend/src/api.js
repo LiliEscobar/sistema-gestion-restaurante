@@ -1,3 +1,5 @@
+import { permisosDeRol } from './permisos.js';
+
 const claveSesion = 'origenes-sesion';
 const apiBase = (import.meta.env.VITE_API_BASE_URL || '/api').replace(/\/$/, '');
 
@@ -52,11 +54,14 @@ export function leerSesion() {
         const contenido = sessionStorage.getItem(claveSesion);
         if (!contenido) return null;
         const sesion = JSON.parse(contenido);
-        if (typeof sesion?.token !== 'string' || !sesion.usuario || !Array.isArray(sesion.usuario.permisos)) {
+        if (typeof sesion?.token !== 'string' || !sesion.usuario) {
             borrarSesion();
             return null;
         }
-        return sesion;
+        // Los permisos guardados no se confían: una sesión creada por una versión anterior
+        // traía permisos: [] y ocultaba las pantallas. Se recalculan siempre desde el rol.
+        const rol = typeof sesion.usuario.rol === 'string' ? sesion.usuario.rol : sesion.usuario.rol?.codigo;
+        return { ...sesion, usuario: { ...sesion.usuario, rol, permisos: permisosDeRol(rol) } };
     } catch {
         borrarSesion();
         return null;
@@ -65,13 +70,15 @@ export function leerSesion() {
 
 export function guardarSesion(sesion) {
     const usuario = sesion.usuario;
+    const rol = typeof usuario.rol === 'string' ? usuario.rol : usuario.rol?.codigo;
     const normalizada = {
         ...sesion,
         usuario: {
             ...usuario,
             nombre_completo: usuario.nombreCompleto ?? usuario.nombre_completo,
-            rol: typeof usuario.rol === 'string' ? usuario.rol : usuario.rol?.codigo,
-            permisos: usuario.permisos ?? [],
+            rol,
+            // El backend autoriza por rol y no envía permisos; se derivan de sus reglas (ver permisos.js).
+            permisos: permisosDeRol(rol),
             sucursal: usuario.sucursal ?? (usuario.sucursalId == null ? null : `Sucursal #${usuario.sucursalId}`),
         },
     };

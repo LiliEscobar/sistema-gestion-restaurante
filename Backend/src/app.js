@@ -13,6 +13,9 @@ import rutasProveedores from './rutas/proveedoresRutas.js';
 import rutasCompras from './rutas/comprasRutas.js';
 import rutasEmpleados from './rutas/empleadosRutas.js';
 import rutasPlanillas from './rutas/planillasRutas.js';
+import rutasUsuarios from './rutas/usuariosRutas.js';
+import rutasReportes from './rutas/reportesRutas.js';
+import { rutasMesas, rutasReservas } from './rutas/reservasRutas.js';
 import { autenticar } from './middleware/autenticacion.js';
 import { rutaNoEncontrada, manejarErrores } from './middleware/manejoErrores.js';
 
@@ -22,7 +25,7 @@ app.use(express.json());
 // Los id de movimientos son BigInt y JSON no los admite: se envían como texto.
 app.set('json replacer', (_clave, valor) => (typeof valor === 'bigint' ? valor.toString() : valor));
 
-app.get('/api/salud', async (_peticion, respuesta) => {
+app.get('/api/health', async (_peticion, respuesta) => {
     try {
         await prisma.$queryRaw`SELECT 1 AS disponible`;
         return respuesta.json({ estado: 'ok', baseDatos: 'conectada' });
@@ -44,6 +47,10 @@ app.use('/api/proveedores', autenticar, rutasProveedores);
 app.use('/api/compras', autenticar, rutasCompras);
 app.use('/api/empleados', autenticar, rutasEmpleados);
 app.use('/api/planillas', autenticar, rutasPlanillas);
+app.use('/api/usuarios', autenticar, rutasUsuarios);
+app.use('/api/reportes', autenticar, rutasReportes);
+app.use('/api/mesas', autenticar, rutasMesas);
+app.use('/api/reservas', autenticar, rutasReservas);
 
 app.use(rutaNoEncontrada);
 app.use(manejarErrores);
